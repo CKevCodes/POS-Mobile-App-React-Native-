@@ -12,7 +12,10 @@ export default function RootLayout() {
             headerShown: false,
             contentStyle: { backgroundColor: "transparent" },
           }}
-        />
+        >
+          <Stack.Screen name="Products" />
+          <Stack.Screen name="OrderHistory" />
+        </Stack>
       </AdaptiveLayout>
     </SafeAreaProvider>
   );

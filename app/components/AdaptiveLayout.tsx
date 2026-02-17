@@ -1,10 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useColorScheme } from "nativewind";
 import React, { useState } from "react";
-import { Pressable, TouchableOpacity, View } from "react-native";
+import { Pressable, TouchableOpacity, View, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBreakpoint } from "../hooks/useBreakpoint";
 import { ThemeToggle } from "./ThemeToggle";
+import { useRouter } from "expo-router";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,6 +30,8 @@ const MobileLayout = ({ children }: LayoutProps) => {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const iconColor = colorScheme === "dark" ? "#fff" : "#111";
 
   return (
     <View className="flex-1">
@@ -90,8 +93,69 @@ const MobileLayout = ({ children }: LayoutProps) => {
           </View>
 
           {/* Sidebar Content */}
+
           <View className="flex-1 p-4">
-            {/* Add your navigation items here */}
+            <Pressable
+              className="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl mb-3"
+              onPress={() => {
+                router.push("/pages/ProductScreen");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <View className="flex-row items-center">
+                <Ionicons
+                  name="cart-outline"
+                  size={20}
+                  color={iconColor}
+                  className="mr-2 dark:text-white"
+                />
+                <Text className="text-gray-900 dark:text-white font-medium">
+                  Products
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Order History */}
+            <Pressable
+              className="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl mb-3"
+              onPress={() => {
+                router.push("/pages/OrderHistoryScreen");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <View className="flex-row items-center">
+                <Ionicons
+                  name="time-outline"
+                  size={20}
+                  color={iconColor}
+                  className="mr-2 dark:text-white"
+                />
+                <Text className="text-gray-900 dark:text-white font-medium">
+                  Order History
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Analytics */}
+            <Pressable
+              className="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl mb-3"
+              onPress={() => {
+                router.push("/pages/AnalyticsScreen");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <View className="flex-row items-center">
+                <MaterialCommunityIcons
+                  name="chart-bar"
+                  size={20}
+                  color={iconColor}
+                  className="mr-2 dark:text-white"
+                />
+                <Text className="text-gray-900 dark:text-white font-medium">
+                  Analytics
+                </Text>
+              </View>
+            </Pressable>
           </View>
 
           {/* Sidebar Footer with Theme Toggle */}
@@ -104,30 +168,152 @@ const MobileLayout = ({ children }: LayoutProps) => {
   );
 };
 
-const TabletLayout = ({ children }: LayoutProps) => (
-  <View className="flex-1 flex-row">
-    {/* Sidebar placeholder for later */}
-    <View className="w-64 bg-gray-300 dark:bg-gray-900 h-full justify-between">
-      <View className="flex-1" />
-      <View className="p-2 border-t border-gray-200 dark:border-gray-800">
-        <ThemeToggle />
-      </View>
-    </View>
-    <View className="flex-1 bg-gray-800">{children}</View>
-  </View>
-);
+const TabletLayout = ({ children }: LayoutProps) => {
+  const router = useRouter();
+  const { colorScheme } = useColorScheme();
+  const iconColor = colorScheme === "dark" ? "#fff" : "#111";
 
-const DesktopLayout = ({ children }: LayoutProps) => (
-  <View className="flex-1 flex-row">
-    {/* Wider Sidebar for Desktop */}
-    <View className="w-64 bg-gray-300 dark:bg-gray-900 h-full p-4 justify-between">
-      <View className="flex-1">{/* Navigation items will go here */}</View>
-      <View className="border-t border-gray-200 dark:border-gray-800 pt-4">
-        <ThemeToggle />
+  return (
+    <View className="flex-1 flex-row">
+      <View className="w-52 bg-white dark:bg-gray-900 h-full p-4 justify-between border-r border-gray-200 dark:border-gray-800">
+        <View className="flex-1 mt-10">
+          {/* Products */}
+          <Pressable
+            className="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl mb-3"
+            onPress={() => router.push("/pages/ProductScreen")}
+          >
+            <View className="flex-row items-center">
+              <Ionicons
+                name="cart-outline"
+                size={20}
+                color={iconColor}
+                className="mr-3"
+              />
+              <Text className="text-gray-900 dark:text-white font-medium">
+                Products
+              </Text>
+            </View>
+          </Pressable>
+
+          {/* Order History */}
+          <Pressable
+            className="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl mb-3"
+            onPress={() => router.push("/pages/OrderHistoryScreen")}
+          >
+            <View className="flex-row items-center">
+              <Ionicons
+                name="time-outline"
+                size={20}
+                color={iconColor}
+                className="mr-3"
+              />
+              <Text className="text-gray-900 dark:text-white font-medium">
+                Order History
+              </Text>
+            </View>
+          </Pressable>
+
+          {/* Analytics */}
+          <Pressable
+            className="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl mb-3"
+            onPress={() => router.push("/pages/AnalyticsScreen")}
+          >
+            <View className="flex-row items-center">
+              <MaterialCommunityIcons
+                name="chart-bar"
+                size={20}
+                color={iconColor}
+                className="mr-3"
+              />
+              <Text className="text-gray-900 dark:text-white font-medium">
+                Analytics
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+
+        <View className="border-t border-gray-200 dark:border-gray-800 pt-4">
+          <ThemeToggle />
+        </View>
+      </View>
+
+      <View className="flex-1 bg-gray-50 dark:bg-gray-800">{children}</View>
+    </View>
+  );
+};
+
+const DesktopLayout = ({ children }: LayoutProps) => {
+  const router = useRouter();
+  const { colorScheme } = useColorScheme();
+  const iconColor = colorScheme === "dark" ? "#fff" : "#111";
+
+  return (
+    <View className="flex-1 flex-row">
+      <View className="w-64 bg-white dark:bg-gray-900 h-full p-4 justify-between border-r border-gray-200 dark:border-gray-800">
+        <View className="flex-1 mt-10">
+          {/* Products */}
+          <Pressable
+            className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3 hover:bg-gray-200"
+            onPress={() => router.push("/pages/ProductScreen")}
+          >
+            <View className="flex-row items-center">
+              <Ionicons
+                name="cart-outline"
+                size={22}
+                color={iconColor}
+                className="mr-3"
+              />
+              <Text className="text-gray-900 dark:text-white font-medium text-lg">
+                Products
+              </Text>
+            </View>
+          </Pressable>
+
+          {/* Order History */}
+          <Pressable
+            className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3 hover:bg-gray-200"
+            onPress={() => router.push("/pages/OrderHistoryScreen")}
+          >
+            <View className="flex-row items-center">
+              <Ionicons
+                name="time-outline"
+                size={22}
+                color={iconColor}
+                className="mr-3"
+              />
+              <Text className="text-gray-900 dark:text-white font-medium text-lg">
+                Order History
+              </Text>
+            </View>
+          </Pressable>
+
+          {/* Analytics */}
+          <Pressable
+            className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3 hover:bg-gray-200"
+            onPress={() => router.push("/pages/AnalyticsScreen")}
+          >
+            <View className="flex-row items-center">
+              <MaterialCommunityIcons
+                name="chart-bar"
+                size={22}
+                color={iconColor}
+                className="mr-3"
+              />
+              <Text className="text-gray-900 dark:text-white font-medium text-lg">
+                Analytics
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+
+        <View className="border-t border-gray-200 dark:border-gray-800 pt-4">
+          <ThemeToggle />
+        </View>
+      </View>
+
+      <View className="flex-1 bg-gray-50 dark:bg-gray-800">
+        <View className="max-w-7xl mx-auto w-full h-full">{children}</View>
       </View>
     </View>
-    <View className="flex-1 max-w-7xl mx-auto w-full bg-gray-800">
-      {children}
-    </View>
-  </View>
-);
+  );
+};
