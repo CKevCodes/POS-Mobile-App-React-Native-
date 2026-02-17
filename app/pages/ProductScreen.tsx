@@ -96,7 +96,7 @@ export default function ProductScreen() {
         {!isExpanded && (
           <View className={`${isLandscape ? 'flex-[0.65]' : 'flex-1'} p-4`}>
             
-            <View className="flex-row items-center mb-6 space-x-2">
+            <View className="flex-row items-center mb-4 space-x-2">
               <TouchableOpacity onPress={openSidebar} className="p-2">
                 <Ionicons name="menu" size={30} color={isDark ? "white" : "black"} />
               </TouchableOpacity>
@@ -107,7 +107,7 @@ export default function ProductScreen() {
                   placeholder="Search products..." 
                   value={search} onChangeText={setSearch}
                   placeholderTextColor="#9CA3AF"
-                  className="flex-1 h-10 ml-2 dark:text-white" 
+                  className="flex-1 h-10 ml-2 outline-none dark:text-white" 
                 />
               </View>
 
@@ -116,7 +116,7 @@ export default function ProductScreen() {
               </TouchableOpacity>
             </View>
 
-            <View className="h-16 mb-6">
+            <View className="h-16 mb-4">
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {CATEGORIES.map(c => (
                   <TouchableOpacity 
