@@ -135,7 +135,7 @@ export function EditOrderModal({
             {/* Edit Items Button */}
             <Pressable
               onPress={onEditItems}
-              className="flex-row items-center justify-between bg-orange-50 dark:bg-orange-950/50 border-2 border-orange-200 dark:border-orange-800 rounded-xl px-4 py-3.5 mb-5"
+              className="flex-row items-center justify-between bg-blue-50 dark:bg-blue-950/50 border-2 border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3.5 mb-5"
             >
               <View className="flex-row items-center gap-3">
                 <View className="bg-orange-100 dark:bg-orange-900 rounded-lg p-1.5">
@@ -146,10 +146,10 @@ export function EditOrderModal({
                   />
                 </View>
                 <View>
-                  <Text className="text-orange-700 dark:text-orange-300 font-extrabold text-sm">
+                  <Text className="text-black dark:text-white font-extrabold text-sm">
                     Edit Ordered Items
                   </Text>
-                  <Text className="text-orange-500 dark:text-orange-400 text-xs mt-0.5">
+                  <Text className="text-black dark:text-white text-xs mt-0.5">
                     {order.items.length} item
                     {order.items.length !== 1 ? "s" : ""} · Tap to modify
                   </Text>
@@ -158,7 +158,7 @@ export function EditOrderModal({
               <Ionicons
                 name="chevron-forward"
                 size={16}
-                color={isDark ? "#FB923C" : "#EA580C"}
+                color={isDark ? "#3c95fb" : "#0cbaea"}
               />
             </Pressable>
 

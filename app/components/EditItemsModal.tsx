@@ -8,8 +8,11 @@ import {
   View,
   Text,
   TextInput,
+  Dimensions,
 } from "react-native";
 import { Order, OrderItem, fmt } from "./OrderRow";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -118,17 +121,24 @@ export function EditItemsModal({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onClose}
       onShow={handleShow}
     >
-      <Pressable
-        onPress={onClose}
-        className="flex-1 bg-black/50 justify-center px-4"
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.5)",
+          justifyContent: "flex-end",
+        }}
       >
-        <Pressable
-          onPress={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden max-h-[85%]"
+        <View
+          style={{
+            height: SCREEN_HEIGHT * 0.9,
+            backgroundColor: isDark ? "#111827" : "#FFFFFF",
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
         >
           {/* Header */}
           <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
@@ -149,7 +159,11 @@ export function EditItemsModal({
             </Pressable>
           </View>
 
-          <ScrollView className="flex-1" contentContainerClassName="p-4">
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+            showsVerticalScrollIndicator={true}
+          >
             {/* Existing Items */}
             <Text className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
               Items
@@ -350,7 +364,10 @@ export function EditItemsModal({
           </ScrollView>
 
           {/* Save Footer */}
-          <View className="px-4 py-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+          <View
+            className="px-4 py-4 border-t border-gray-100 dark:border-gray-800"
+            style={{ backgroundColor: isDark ? "#111827" : "#FFFFFF" }}
+          >
             <Pressable
               onPress={() => {
                 onSave(editItems);
@@ -363,8 +380,8 @@ export function EditItemsModal({
               </Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
