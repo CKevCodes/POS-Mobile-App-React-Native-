@@ -167,6 +167,24 @@ const MobileLayout = ({ children }: LayoutProps) => {
                 Analytics
               </Text>
             </Pressable>
+
+            <Pressable
+              className="flex-row items-center px-3 py-3 mb-1 rounded-lg active:bg-gray-100 dark:active:bg-gray-800"
+              onPress={() => {
+                router.push("/pages/InventoryScreen");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <Ionicons
+                name="cube-outline"
+                size={22}
+                color={iconColor}
+                style={{ marginRight: 12 }}
+              />
+              <Text className="text-gray-900 dark:text-white font-medium text-base">
+                Inventory
+              </Text>
+            </Pressable>
           </View>
 
           {/* Sidebar Footer */}
@@ -304,6 +322,23 @@ const DesktopLayout = ({ children }: LayoutProps) => {
               />
               <Text className="text-gray-900 dark:text-white font-medium text-base">
                 Analytics
+              </Text>
+            </Pressable>
+
+            <Pressable
+              className="flex-row items-center px-3 py-3 mb-1 rounded-lg active:bg-gray-100 dark:active:bg-gray-800"
+              onPress={() => {
+                router.push("/pages/InventoryScreen");
+              }}
+            >
+              <Ionicons
+                name="cube-outline"
+                size={22}
+                color={iconColor}
+                style={{ marginRight: 12 }}
+              />
+              <Text className="text-gray-900 dark:text-white font-medium text-base">
+                Inventory
               </Text>
             </Pressable>
           </View>
