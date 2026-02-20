@@ -1,441 +1,865 @@
-import React, { useState } from "react";
+import { useColorScheme } from "nativewind";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Pressable,
   ScrollView,
-  TouchableOpacity,
-  useWindowDimensions,
+  Text,
+  View,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Stack } from "expo-router";
-import { useSidebar } from "../context/SidebarContext";
-import { useColorScheme } from "nativewind";
+import { ordersRepo } from "../data/Orders";
+import { dbOrderToUi } from "../data/OrderAdapter";
+import type { Order } from "../components/OrderRow";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type Period = "Today" | "This Week" | "This Month" | "This Year";
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const STATS: Record<
-  Period,
-  {
-    revenue: number;
-    orders: number;
-    avgOrder: number;
-    topItem: string;
-    revenueChange: number;
-    ordersChange: number;
-  }
-> = {
-  Today: {
-    revenue: 12388.8,
-    orders: 8,
-    avgOrder: 1548.6,
-    topItem: "Wagyu Burger",
-    revenueChange: 12.4,
-    ordersChange: 6.7,
-  },
-  "This Week": {
-    revenue: 87320.5,
-    orders: 54,
-    avgOrder: 1617.05,
-    topItem: "Grilled Salmon",
-    revenueChange: 8.1,
-    ordersChange: -2.3,
-  },
-  "This Month": {
-    revenue: 340850.0,
-    orders: 212,
-    avgOrder: 1607.78,
-    topItem: "Pasta Carbonara",
-    revenueChange: 15.6,
-    ordersChange: 11.2,
-  },
-  "This Year": {
-    revenue: 3820400.0,
-    orders: 2341,
-    avgOrder: 1631.95,
-    topItem: "Wagyu Burger",
-    revenueChange: 22.3,
-    ordersChange: 18.9,
-  },
-};
-
-const TOP_ITEMS = [
-  { name: "Wagyu Burger", sold: 142, revenue: 96560, pct: 100 },
-  { name: "Grilled Salmon", sold: 118, revenue: 105020, pct: 83 },
-  { name: "Pasta Carbonara", sold: 97, revenue: 40740, pct: 68 },
-  { name: "Beef Steak Platter", sold: 84, revenue: 79800, pct: 59 },
-  { name: "Seafood Marinara", sold: 71, revenue: 22720, pct: 50 },
-];
-
-const PAYMENT_BREAKDOWN = [
-  { method: "Card", pct: 42, color: "#009245" },
-  { method: "Cash", pct: 35, color: "#34D399" },
-  { method: "E-wallet", pct: 23, color: "#6EE7B7" },
-];
-
-const ORDER_TYPE_BREAKDOWN = [
-  { type: "Dine-in", pct: 68, color: "#009245" },
-  { type: "Takeout", pct: 32, color: "#86EFAC" },
-];
-
-const HOURLY_BARS = [
-  { hour: "8am", val: 20 },
-  { hour: "9am", val: 45 },
-  { hour: "10am", val: 35 },
-  { hour: "11am", val: 60 },
-  { hour: "12pm", val: 100 },
-  { hour: "1pm", val: 88 },
-  { hour: "2pm", val: 72 },
-  { hour: "3pm", val: 55 },
-  { hour: "4pm", val: 40 },
-  { hour: "5pm", val: 65 },
-  { hour: "6pm", val: 90 },
-  { hour: "7pm", val: 78 },
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-  n >= 1_000_000
-    ? `₱${(n / 1_000_000).toFixed(2)}M`
-    : n >= 1_000
-      ? `₱${(n / 1_000).toFixed(1)}k`
-      : `₱${n.toFixed(2)}`;
+  `₱${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+const fmtShort = (n: number) => {
+  if (n >= 1_000_000) return `₱${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `₱${(n / 1_000).toFixed(1)}K`;
+  return `₱${n.toFixed(0)}`;
+};
 
-function StatCard({
+const toDateStr = (iso: string) => iso.slice(0, 10);
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysAgoStr(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENTS  (same visual as before — no changes needed)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MetricCard({
   icon,
   label,
   value,
-  change,
-  isDark,
-  accent = false,
+  sub,
+  iconBg,
+  iconColor,
 }: {
-  icon: string;
+  icon: any;
   label: string;
   value: string;
-  change: number;
-  isDark: boolean;
-  accent?: boolean;
+  sub?: string;
+  iconBg: string;
+  iconColor: string;
 }) {
-  const positive = change >= 0;
   return (
-    <View
-      className={`flex-1 rounded-2xl p-4 ${accent ? "bg-[#009245]" : "bg-white dark:bg-gray-800"} shadow-sm`}
-      style={{ minWidth: 140 }}
-    >
+    <View className="flex-1 bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800">
       <View className="flex-row items-center justify-between mb-3">
         <View
-          className={`w-9 h-9 rounded-xl items-center justify-center ${accent ? "bg-white/20" : "bg-green-50 dark:bg-green-900/30"}`}
+          className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}
         >
-          <MaterialCommunityIcons
-            name={icon as any}
-            size={18}
-            color={accent ? "#fff" : "#009245"}
-          />
-        </View>
-        <View
-          className={`flex-row items-center px-2 py-0.5 rounded-full ${positive ? (accent ? "bg-white/20" : "bg-green-50 dark:bg-green-900/40") : "bg-red-50 dark:bg-red-900/30"}`}
-        >
-          <Ionicons
-            name={positive ? "trending-up" : "trending-down"}
-            size={10}
-            color={positive ? (accent ? "#fff" : "#009245") : "#ef4444"}
-          />
-          <Text
-            className={`text-[10px] font-bold ml-0.5 ${positive ? (accent ? "text-white" : "text-green-700 dark:text-green-400") : "text-red-500"}`}
-          >
-            {Math.abs(change)}%
-          </Text>
+          <Ionicons name={icon} size={20} color={iconColor} />
         </View>
       </View>
-      <Text
-        className={`text-xl font-black ${accent ? "text-white" : "text-gray-900 dark:text-white"}`}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
+      <Text className="text-gray-900 dark:text-white font-black text-xl">
         {value}
       </Text>
-      <Text
-        className={`text-xs mt-0.5 ${accent ? "text-white/70" : "text-gray-400 dark:text-gray-500"}`}
-      >
+      <Text className="text-gray-500 dark:text-gray-400 text-xs mt-0.5 font-medium">
         {label}
       </Text>
+      {sub && (
+        <Text className="text-gray-400 dark:text-gray-500 text-[11px] mt-0.5">
+          {sub}
+        </Text>
+      )}
     </View>
   );
 }
 
-function SectionHeader({ title, isDark }: { title: string; isDark: boolean }) {
+function BarChart({
+  data,
+  isDark,
+  color = "#2563EB",
+}: {
+  data: { label: string; value: number }[];
+  isDark: boolean;
+  color?: string;
+}) {
+  const max = Math.max(...data.map((d) => d.value), 1);
   return (
-    <Text className="px-1 mb-3 text-xs font-bold tracking-widest text-gray-400 uppercase dark:text-gray-500">
-      {title}
-    </Text>
+    <View className="flex-row items-end gap-1.5 h-28">
+      {data.map((d, i) => {
+        const pct = d.value / max;
+        const h = Math.max(pct * 96, 3);
+        return (
+          <View key={i} className="flex-1 items-center">
+            <Text
+              className="text-[10px] font-bold mb-1"
+              style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
+            >
+              {fmtShort(d.value).replace("₱", "")}
+            </Text>
+            <View
+              style={{
+                height: h,
+                backgroundColor: color,
+                borderRadius: 4,
+                width: "100%",
+                opacity: 0.85,
+              }}
+            />
+            <Text
+              className="text-[9px] mt-1 font-medium"
+              style={{ color: isDark ? "#6B7280" : "#9CA3AF" }}
+              numberOfLines={1}
+            >
+              {d.label}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
-function HourlyChart({ isDark }: { isDark: boolean }) {
-  const maxVal = Math.max(...HOURLY_BARS.map((b) => b.val));
+function DonutBar({
+  segments,
+  isDark,
+}: {
+  segments: { label: string; value: number; color: string }[];
+  isDark: boolean;
+}) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   return (
-    <View className="p-4 bg-white shadow-sm dark:bg-gray-800 rounded-2xl">
-      <Text className="mb-1 text-sm font-bold text-gray-900 dark:text-white">
-        Revenue by Hour
-      </Text>
-      <Text className="mb-4 text-xs text-gray-400 dark:text-gray-500">
-        Peak hours highlighted
-      </Text>
-      <View
-        className="flex-row items-end justify-between"
-        style={{ height: 80 }}
-      >
-        {HOURLY_BARS.map((b) => {
-          const barHeight = Math.max(4, (b.val / maxVal) * 72);
-          const isPeak = b.val >= 85;
-          return (
-            <View key={b.hour} className="items-center flex-1">
-              <View
-                style={{ height: barHeight }}
-                className={`w-3 rounded-t-md ${isPeak ? "bg-[#009245]" : "bg-green-100 dark:bg-green-900/30"}`}
-              />
-              <Text className="text-[8px] text-gray-400 dark:text-gray-600 mt-1">
-                {b.hour}
+    <View>
+      <View className="h-4 flex-row rounded-full overflow-hidden mb-3">
+        {segments.map((s, i) => (
+          <View
+            key={i}
+            style={{ flex: s.value / total, backgroundColor: s.color }}
+          />
+        ))}
+      </View>
+      <View className="flex-row flex-wrap gap-x-4 gap-y-1.5">
+        {segments.map((s, i) => (
+          <View key={i} className="flex-row items-center gap-1.5">
+            <View
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 3,
+                backgroundColor: s.color,
+              }}
+            />
+            <Text className="text-xs text-gray-600 dark:text-gray-400">
+              {s.label}{" "}
+              <Text className="font-bold text-gray-900 dark:text-white">
+                {((s.value / total) * 100).toFixed(0)}%
               </Text>
-            </View>
-          );
-        })}
+            </Text>
+          </View>
+        ))}
       </View>
     </View>
   );
 }
 
-function TopItemsCard({ isDark }: { isDark: boolean }) {
+function SectionHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
   return (
-    <View className="p-4 bg-white shadow-sm dark:bg-gray-800 rounded-2xl">
-      <Text className="mb-1 text-sm font-bold text-gray-900 dark:text-white">
-        Top Selling Items
+    <View className="mb-3">
+      <Text className="text-gray-900 dark:text-white font-black text-base">
+        {title}
       </Text>
-      <Text className="mb-4 text-xs text-gray-400 dark:text-gray-500">
-        By units sold
-      </Text>
-      {TOP_ITEMS.map((item, i) => (
-        <View key={item.name} className="mb-3">
-          <View className="flex-row items-center justify-between mb-1">
-            <View className="flex-row items-center flex-1">
-              <Text className="w-5 text-xs font-black text-gray-300 dark:text-gray-600">
-                {i + 1}
-              </Text>
-              <Text
-                className="flex-1 text-xs font-semibold text-gray-700 dark:text-gray-200"
-                numberOfLines={1}
-              >
-                {item.name}
-              </Text>
-            </View>
-            <Text className="ml-2 text-xs font-bold text-gray-900 dark:text-white">
-              {item.sold} sold
-            </Text>
-          </View>
-          <View className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden ml-5">
-            <View
-              className="h-full bg-[#009245] rounded-full"
-              style={{ width: `${item.pct}%` }}
-            />
-          </View>
-        </View>
-      ))}
+      {subtitle && (
+        <Text className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
+          {subtitle}
+        </Text>
+      )}
     </View>
   );
 }
 
-function BreakdownCard({
-  title,
-  subtitle,
-  data,
+function RankRow({
+  rank,
+  name,
+  value,
+  sub,
+  pct,
+  color,
   isDark,
 }: {
-  title: string;
-  subtitle: string;
-  data: { method?: string; type?: string; pct: number; color: string }[];
+  rank: number;
+  name: string;
+  value: string;
+  sub?: string;
+  pct: number;
+  color: string;
   isDark: boolean;
 }) {
   return (
-    <View className="flex-1 p-4 bg-white shadow-sm dark:bg-gray-800 rounded-2xl">
-      <Text className="font-bold text-gray-900 dark:text-white text-sm mb-0.5">
-        {title}
-      </Text>
-      <Text className="mb-4 text-xs text-gray-400 dark:text-gray-500">
-        {subtitle}
-      </Text>
-      {/* Stacked bar */}
-      <View className="flex-row h-3 mb-4 overflow-hidden rounded-full">
-        {data.map((d, i) => (
-          <View key={i} style={{ flex: d.pct, backgroundColor: d.color }} />
-        ))}
-      </View>
-      {data.map((d, i) => (
-        <View key={i} className="flex-row items-center justify-between mb-1.5">
-          <View className="flex-row items-center">
-            <View
-              className="w-2.5 h-2.5 rounded-full mr-2"
-              style={{ backgroundColor: d.color }}
-            />
-            <Text className="text-xs text-gray-600 dark:text-gray-300">
-              {d.method ?? d.type}
+    <View className="mb-3">
+      <View className="flex-row items-center justify-between mb-1">
+        <View className="flex-row items-center flex-1 gap-2">
+          <View
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              backgroundColor:
+                rank <= 3 ? color : isDark ? "#374151" : "#E5E7EB",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "900",
+                color: rank <= 3 ? "#fff" : isDark ? "#9CA3AF" : "#6B7280",
+              }}
+            >
+              {rank}
             </Text>
           </View>
-          <Text className="text-xs font-bold text-gray-900 dark:text-white">
-            {d.pct}%
+          <Text
+            className="text-gray-800 dark:text-gray-200 font-semibold text-sm flex-1"
+            numberOfLines={1}
+          >
+            {name}
           </Text>
         </View>
-      ))}
+        <View className="items-end">
+          <Text className="text-gray-900 dark:text-white font-bold text-sm">
+            {value}
+          </Text>
+          {sub && (
+            <Text className="text-gray-400 dark:text-gray-500 text-[11px]">
+              {sub}
+            </Text>
+          )}
+        </View>
+      </View>
+      <View className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+        <View
+          style={{
+            width: `${pct}%`,
+            backgroundColor: color,
+            height: "100%",
+            borderRadius: 4,
+          }}
+        />
+      </View>
     </View>
   );
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TABS (same layout, now receive real orders)
+// ─────────────────────────────────────────────────────────────────────────────
 
-export default function AnalyticsScreen() {
-  const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
-  // Hide hamburger when screen is wide enough to show sidebar persistently
-  const showHamburger = !isLandscape && width < 768;
-  const { colorScheme } = useColorScheme();
-  const { openSidebar } = useSidebar();
-  const isDark = colorScheme === "dark";
+function OverviewTab({ orders, isDark }: { orders: Order[]; isDark: boolean }) {
+  const paidOrders = orders.filter((o) => o.paymentStatus === "Paid");
+  const totalRevenue = paidOrders.reduce((s, o) => s + o.total, 0);
+  const totalOrders = orders.length;
+  const avgOrder = paidOrders.length ? totalRevenue / paidOrders.length : 0;
+  const completedOrders = orders.filter((o) => o.orderStatus === "Done").length;
+  const completionRate = totalOrders
+    ? (completedOrders / totalOrders) * 100
+    : 0;
 
-  const [period, setPeriod] = useState<Period>("Today");
-  const stats = STATS[period];
-  const PERIODS: Period[] = ["Today", "This Week", "This Month", "This Year"];
+  // Last 7 days trend
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const revenueByDay = last7Days.map((date) => ({
+    label: new Date(date).toLocaleDateString("en-PH", { weekday: "short" }),
+    value: orders
+      .filter(
+        (o) => toDateStr(o.createdAt) === date && o.paymentStatus === "Paid",
+      )
+      .reduce((s, o) => s + o.total, 0),
+  }));
+
+  const paymentBreakdown = [
+    {
+      label: "Cash",
+      value: paidOrders
+        .filter((o) => o.paymentMethod === "Cash")
+        .reduce((s, o) => s + o.total, 0),
+      color: "#16A34A",
+    },
+    {
+      label: "Card",
+      value: paidOrders
+        .filter((o) => o.paymentMethod === "Card")
+        .reduce((s, o) => s + o.total, 0),
+      color: "#2563EB",
+    },
+    {
+      label: "E-wallet",
+      value: paidOrders
+        .filter((o) => o.paymentMethod === "E-wallet")
+        .reduce((s, o) => s + o.total, 0),
+      color: "#7C3AED",
+    },
+  ].filter((p) => p.value > 0);
+
+  const dineIn = orders.filter((o) => o.orderType === "dine-in").length;
+  const takeout = orders.filter((o) => o.orderType === "takeout").length;
+  const delivery = orders.filter((o) => o.orderType === "delivery").length;
+  const orderTypeSplit = [
+    { label: "Dine-in", value: dineIn, color: "#0EA5E9" },
+    { label: "Takeout", value: takeout, color: "#F59E0B" },
+    { label: "Delivery", value: delivery, color: "#7C3AED" },
+  ].filter((s) => s.value > 0);
+
+  const statusBreakdown = (
+    ["Done", "Served", "Preparing", "Cancelled"] as Order["orderStatus"][]
+  ).map((s) => ({
+    label: s,
+    count: orders.filter((o) => o.orderStatus === s).length,
+    color:
+      s === "Done"
+        ? "#16A34A"
+        : s === "Served"
+          ? "#2563EB"
+          : s === "Preparing"
+            ? "#D97706"
+            : "#DC2626",
+  }));
 
   return (
-    <View
-      className="flex-1 bg-[#F4F7F4] dark:bg-gray-950"
-      style={{ paddingTop: insets.top }}
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      className="flex-1"
+      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
     >
-      <Stack.Screen options={{ headerShown: false }} />
+      <View className="flex-row gap-3 mb-3">
+        <MetricCard
+          icon="cash-outline"
+          label="Total Revenue"
+          value={fmtShort(totalRevenue)}
+          sub="All paid orders"
+          iconBg="bg-green-100 dark:bg-green-900/40"
+          iconColor="#16A34A"
+        />
+        <MetricCard
+          icon="receipt-outline"
+          label="Total Orders"
+          value={String(totalOrders)}
+          sub={`${completedOrders} completed`}
+          iconBg="bg-blue-100 dark:bg-blue-900/40"
+          iconColor="#2563EB"
+        />
+      </View>
+      <View className="flex-row gap-3 mb-5">
+        <MetricCard
+          icon="stats-chart-outline"
+          label="Avg. Order Value"
+          value={fmtShort(avgOrder)}
+          sub="Per paid order"
+          iconBg="bg-purple-100 dark:bg-purple-900/40"
+          iconColor="#7C3AED"
+        />
+        <MetricCard
+          icon="checkmark-circle-outline"
+          label="Completion Rate"
+          value={`${completionRate.toFixed(0)}%`}
+          sub="Done / Total"
+          iconBg="bg-orange-100 dark:bg-orange-900/40"
+          iconColor="#D97706"
+        />
+      </View>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <View className="px-5 pt-6 pb-4 bg-white border-b border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-        <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center">
-            <View>
-              <Text className="text-2xl font-black text-gray-900 dark:text-white">
-                Analytics
+      <View className="bg-white dark:bg-gray-900 rounded-2xl p-4 mb-4 border border-gray-100 dark:border-gray-800">
+        <SectionHeader
+          title="Revenue — Last 7 Days"
+          subtitle="Paid orders only"
+        />
+        <BarChart data={revenueByDay} isDark={isDark} color="#2563EB" />
+      </View>
+
+      <View className="flex-row gap-3 mb-4">
+        <View className="flex-1 bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800">
+          <SectionHeader title="Payment Methods" />
+          {paymentBreakdown.length > 0 ? (
+            <DonutBar segments={paymentBreakdown} isDark={isDark} />
+          ) : (
+            <Text className="text-gray-400 text-xs">No data yet</Text>
+          )}
+        </View>
+        <View className="flex-1 bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800">
+          <SectionHeader title="Order Type" />
+          {orderTypeSplit.length > 0 ? (
+            <DonutBar segments={orderTypeSplit} isDark={isDark} />
+          ) : (
+            <Text className="text-gray-400 text-xs">No data yet</Text>
+          )}
+        </View>
+      </View>
+
+      <View className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800">
+        <SectionHeader title="Order Status Breakdown" />
+        <View className="flex-row gap-2 flex-wrap">
+          {statusBreakdown.map((s) => (
+            <View
+              key={s.label}
+              className="flex-row items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-2.5 mb-1"
+            >
+              <View
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  backgroundColor: s.color,
+                }}
+              />
+              <Text className="text-gray-700 dark:text-gray-300 text-sm">
+                {s.label}
               </Text>
-              <Text className="text-xs text-gray-400 dark:text-gray-500">
-                Business performance overview
+              <Text className="font-black text-gray-900 dark:text-white text-sm">
+                {s.count}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+function ProductsTab({ orders, isDark }: { orders: Order[]; isDark: boolean }) {
+  const [sortBy, setSortBy] = useState<"revenue" | "qty">("revenue");
+
+  const itemStats = useMemo(() => {
+    const map: Record<string, { name: string; qty: number; revenue: number }> =
+      {};
+    orders.forEach((o) => {
+      o.items.forEach((item) => {
+        if (!map[item.name])
+          map[item.name] = { name: item.name, qty: 0, revenue: 0 };
+        map[item.name].qty += item.quantity;
+        if (o.paymentStatus === "Paid") {
+          map[item.name].revenue += item.quantity * item.unitPrice;
+        }
+      });
+    });
+    return Object.values(map).sort((a, b) =>
+      sortBy === "revenue" ? b.revenue - a.revenue : b.qty - a.qty,
+    );
+  }, [orders, sortBy]);
+
+  const maxItemValue =
+    itemStats[0]?.[sortBy === "revenue" ? "revenue" : "qty"] || 1;
+
+  return (
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      className="flex-1"
+      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+    >
+      <View className="flex-row bg-gray-100 dark:bg-gray-800 rounded-xl p-1 mb-5">
+        {(["revenue", "qty"] as const).map((s) => (
+          <Pressable
+            key={s}
+            onPress={() => setSortBy(s)}
+            className={`flex-1 py-2 rounded-lg items-center ${sortBy === s ? "bg-white dark:bg-gray-700 shadow-sm" : ""}`}
+          >
+            <Text
+              className={`text-sm font-bold ${sortBy === s ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"}`}
+            >
+              {s === "revenue" ? "By Revenue" : "By Qty Sold"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800">
+        <SectionHeader
+          title="Top Selling Items"
+          subtitle={
+            sortBy === "revenue" ? "Ranked by revenue" : "Ranked by qty sold"
+          }
+        />
+        {itemStats.length === 0 && (
+          <Text className="text-gray-400 text-sm">No sales data yet.</Text>
+        )}
+        {itemStats.slice(0, 10).map((item, i) => (
+          <RankRow
+            key={item.name}
+            rank={i + 1}
+            name={item.name}
+            value={
+              sortBy === "revenue" ? fmtShort(item.revenue) : `×${item.qty}`
+            }
+            sub={sortBy === "revenue" ? `×${item.qty} sold` : fmt(item.revenue)}
+            pct={
+              (item[sortBy === "revenue" ? "revenue" : "qty"] / maxItemValue) *
+              100
+            }
+            color={
+              i === 0
+                ? "#F59E0B"
+                : i === 1
+                  ? "#94A3B8"
+                  : i === 2
+                    ? "#B45309"
+                    : "#2563EB"
+            }
+            isDark={isDark}
+          />
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+function OrdersTab({ orders, isDark }: { orders: Order[]; isDark: boolean }) {
+  const byHour = useMemo(() => {
+    const slots = [
+      { label: "8–10", hours: [8, 9] },
+      { label: "10–12", hours: [10, 11] },
+      { label: "12–14", hours: [12, 13] },
+      { label: "14–16", hours: [14, 15] },
+      { label: "16–18", hours: [16, 17] },
+      { label: "18–20", hours: [18, 19] },
+    ];
+    return slots.map((slot) => ({
+      label: slot.label,
+      value: orders.filter((o) =>
+        slot.hours.includes(new Date(o.createdAt).getHours()),
+      ).length,
+    }));
+  }, [orders]);
+
+  const totalDiscounts = orders.reduce((s, o) => s + (o.discount || 0), 0);
+  const totalServiceCharge = orders.reduce(
+    (s, o) => s + (o.serviceCharge || 0),
+    0,
+  );
+  const totalTax = orders.reduce((s, o) => s + o.tax, 0);
+
+  const recentOrders = [...orders]
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
+    .slice(0, 8);
+
+  const statusBg: Record<Order["orderStatus"], string> = {
+    Done: "bg-green-50 dark:bg-green-900/20",
+    Served: "bg-blue-50 dark:bg-blue-900/20",
+    Preparing: "bg-yellow-50 dark:bg-yellow-900/20",
+    Cancelled: "bg-red-50 dark:bg-red-900/20",
+  };
+  const statusText: Record<Order["orderStatus"], string> = {
+    Done: "text-green-700 dark:text-green-400",
+    Served: "text-blue-700 dark:text-blue-400",
+    Preparing: "text-yellow-700 dark:text-yellow-400",
+    Cancelled: "text-red-700 dark:text-red-400",
+  };
+
+  return (
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      className="flex-1"
+      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+    >
+      <View className="bg-white dark:bg-gray-900 rounded-2xl p-4 mb-4 border border-gray-100 dark:border-gray-800">
+        <SectionHeader
+          title="Orders by Time of Day"
+          subtitle="Peak service hours"
+        />
+        <BarChart data={byHour} isDark={isDark} color="#D97706" />
+      </View>
+
+      <View className="bg-white dark:bg-gray-900 rounded-2xl p-4 mb-4 border border-gray-100 dark:border-gray-800">
+        <SectionHeader title="Financial Breakdown" />
+        {[
+          {
+            label: "Tax Collected",
+            value: totalTax,
+            icon: "document-text-outline",
+            color: "#2563EB",
+          },
+          {
+            label: "Service Charges",
+            value: totalServiceCharge,
+            icon: "briefcase-outline",
+            color: "#7C3AED",
+          },
+          {
+            label: "Total Discounts",
+            value: totalDiscounts,
+            icon: "pricetag-outline",
+            color: "#DC2626",
+          },
+        ].map((row) => (
+          <View
+            key={row.label}
+            className="flex-row items-center justify-between py-3 border-b border-gray-50 dark:border-gray-800"
+          >
+            <View className="flex-row items-center gap-3">
+              <View className="w-9 h-9 rounded-xl bg-gray-50 dark:bg-gray-800 items-center justify-center">
+                <Ionicons name={row.icon as any} size={18} color={row.color} />
+              </View>
+              <Text className="text-gray-700 dark:text-gray-300 text-sm font-medium">
+                {row.label}
+              </Text>
+            </View>
+            <Text className="font-bold text-gray-900 dark:text-white text-sm">
+              {fmt(row.value)}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800">
+        <SectionHeader title="Recent Orders" subtitle="Latest 8 transactions" />
+        {recentOrders.length === 0 && (
+          <Text className="text-gray-400 text-sm">No orders yet.</Text>
+        )}
+        {recentOrders.map((o) => (
+          <View
+            key={o.id}
+            className="flex-row items-center justify-between py-2.5 border-b border-gray-50 dark:border-gray-800"
+          >
+            <View className="flex-1">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-gray-900 dark:text-white font-bold text-sm">
+                  {o.id}
+                </Text>
+                <View
+                  className={`px-2 py-0.5 rounded-full ${statusBg[o.orderStatus]}`}
+                >
+                  <Text
+                    className={`text-[11px] font-bold ${statusText[o.orderStatus]}`}
+                  >
+                    {o.orderStatus}
+                  </Text>
+                </View>
+              </View>
+              <Text className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
+                {o.orderType === "dine-in"
+                  ? `🍽 ${o.tableNumber ?? ""}`
+                  : o.orderType === "takeout"
+                    ? "🥡 Takeout"
+                    : "🛵 Delivery"}{" "}
+                · {o.paymentMethod}
+              </Text>
+            </View>
+            <View className="items-end">
+              <Text className="font-bold text-gray-900 dark:text-white text-sm">
+                {fmt(o.total)}
+              </Text>
+              <Text className="text-gray-400 dark:text-gray-500 text-[11px]">
+                {new Date(o.createdAt).toLocaleDateString("en-PH", {
+                  month: "short",
+                  day: "numeric",
+                })}
               </Text>
             </View>
           </View>
-          <View className="items-center justify-center w-9 h-9 bg-green-50 dark:bg-green-900/30 rounded-xl">
-            <Ionicons name="bar-chart" size={18} color="#009245" />
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
+type Tab = "overview" | "products" | "orders";
+type Period = "today" | "yesterday" | "week" | "all";
+
+export default function AnalyticsScreen() {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === "dark";
+
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [period, setPeriod] = useState<Period>("all");
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // ── Load ALL orders from DB once; period filter is done in-memory ──────────
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const dbRows = await ordersRepo.getAll();
+      const uiOrders: Order[] = await Promise.all(
+        dbRows.map(async (dbOrder) => {
+          const dbItems = await ordersRepo.items.getByOrder(dbOrder.id);
+          return dbOrderToUi(dbOrder, dbItems);
+        }),
+      );
+      setAllOrders(uiOrders);
+    } catch (e) {
+      console.error("[Analytics] load error", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  // ── Period filter (in-memory, instant) ────────────────────────────────────
+  const filteredOrders = useMemo(() => {
+    const today = todayStr();
+    const yesterday = daysAgoStr(1);
+    const weekStart = daysAgoStr(6);
+
+    return allOrders.filter((o) => {
+      const d = toDateStr(o.createdAt);
+      if (period === "today") return d === today;
+      if (period === "yesterday") return d === yesterday;
+      if (period === "week") return d >= weekStart && d <= today;
+      return true;
+    });
+  }, [allOrders, period]);
+
+  const periods: { key: Period; label: string }[] = [
+    { key: "today", label: "Today" },
+    { key: "yesterday", label: "Yesterday" },
+    { key: "week", label: "This Week" },
+    { key: "all", label: "All Time" },
+  ];
+
+  const tabs: { key: Tab; label: string; icon: any }[] = [
+    { key: "overview", label: "Overview", icon: "grid-outline" },
+    { key: "products", label: "Products", icon: "fast-food-outline" },
+    { key: "orders", label: "Orders", icon: "receipt-outline" },
+  ];
+
+  return (
+    <View className="flex-1 bg-gray-50 dark:bg-gray-800">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <View className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-5 pt-6 pb-0">
+        <View className="flex-row items-center justify-between mb-4">
+          <View>
+            <Text className="text-gray-900 dark:text-white font-black text-2xl">
+              Analytics
+            </Text>
+            <Text className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
+              {loading
+                ? "Loading…"
+                : `${filteredOrders.length} orders · ${periods.find((p) => p.key === period)?.label}`}
+            </Text>
+          </View>
+          <View className="flex-row items-center gap-2">
+            {/* Refresh button */}
+            <Pressable
+              onPress={loadOrders}
+              className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-gray-800 items-center justify-center"
+            >
+              <Ionicons
+                name="refresh-outline"
+                size={20}
+                color={isDark ? "#9CA3AF" : "#6B7280"}
+              />
+            </Pressable>
+            <View className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 items-center justify-center">
+              <MaterialCommunityIcons
+                name="chart-bar"
+                size={22}
+                color="#2563EB"
+              />
+            </View>
           </View>
         </View>
 
-        {/* Period Selector */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {PERIODS.map((p) => (
-            <TouchableOpacity
-              key={p}
-              onPress={() => setPeriod(p)}
-              className={`mr-2 px-4 py-2 rounded-xl border ${
-                period === p
-                  ? "bg-[#009245] border-[#009245]"
-                  : "bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700"
+        {/* Period selector */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="mb-4 -mx-1"
+        >
+          {periods.map((p) => (
+            <Pressable
+              key={p.key}
+              onPress={() => setPeriod(p.key)}
+              className={`mr-2 px-4 py-2 rounded-full border ${
+                period === p.key
+                  ? "bg-blue-600 border-blue-600"
+                  : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
               }`}
             >
               <Text
-                className={`text-xs font-bold ${period === p ? "text-white" : "text-gray-500 dark:text-gray-400"}`}
+                className={`text-sm font-bold ${period === p.key ? "text-white" : "text-gray-600 dark:text-gray-300"}`}
               >
-                {p}
+                {p.label}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           ))}
         </ScrollView>
+
+        {/* Tab bar */}
+        <View className="flex-row">
+          {tabs.map((tab) => (
+            <Pressable
+              key={tab.key}
+              onPress={() => setActiveTab(tab.key)}
+              className={`flex-1 items-center pb-3 border-b-2 ${activeTab === tab.key ? "border-blue-600" : "border-transparent"}`}
+            >
+              <View className="flex-row items-center gap-1.5">
+                <Ionicons
+                  name={tab.icon}
+                  size={15}
+                  color={
+                    activeTab === tab.key
+                      ? "#2563EB"
+                      : isDark
+                        ? "#6B7280"
+                        : "#9CA3AF"
+                  }
+                />
+                <Text
+                  className={`text-sm font-bold ${activeTab === tab.key ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`}
+                >
+                  {tab.label}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-      >
-        {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
-        <SectionHeader title="Overview" isDark={isDark} />
-        <View className="flex-row gap-3 mb-3">
-          <StatCard
-            icon="cash-multiple"
-            label="Total Revenue"
-            value={fmt(stats.revenue)}
-            change={stats.revenueChange}
-            isDark={isDark}
-            accent
+      {/* ── Loading ─────────────────────────────────────────────────────────── */}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator
+            size="large"
+            color={isDark ? "#60A5FA" : "#2563EB"}
           />
-          <StatCard
-            icon="receipt"
-            label="Total Orders"
-            value={stats.orders.toString()}
-            change={stats.ordersChange}
-            isDark={isDark}
-          />
+          <Text className="mt-3 text-sm text-gray-400">Loading analytics…</Text>
         </View>
-        <View className="flex-row gap-3 mb-6">
-          <StatCard
-            icon="calculator"
-            label="Avg. Order Value"
-            value={fmt(stats.avgOrder)}
-            change={stats.revenueChange - 2}
-            isDark={isDark}
-          />
-          <View
-            className="flex-1 p-4 bg-white shadow-sm dark:bg-gray-800 rounded-2xl"
-            style={{ minWidth: 140 }}
-          >
-            <View className="items-center justify-center mb-3 w-9 h-9 bg-green-50 dark:bg-green-900/30 rounded-xl">
-              <MaterialCommunityIcons name="star" size={18} color="#009245" />
-            </View>
-            <Text
-              className="text-sm font-black text-gray-900 dark:text-white"
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {stats.topItem}
-            </Text>
-            <Text className="text-xs mt-0.5 text-gray-400 dark:text-gray-500">
-              Top seller
-            </Text>
-          </View>
-        </View>
-
-        {/* ── Hourly Chart ───────────────────────────────────────────────────── */}
-        <SectionHeader title="Activity" isDark={isDark} />
-        <View className="mb-3">
-          <HourlyChart isDark={isDark} />
-        </View>
-
-        {/* ── Breakdown Cards ────────────────────────────────────────────────── */}
-        <View className="flex-row gap-3 mb-6">
-          <BreakdownCard
-            title="Payment"
-            subtitle="By method"
-            data={PAYMENT_BREAKDOWN}
-            isDark={isDark}
-          />
-          <BreakdownCard
-            title="Order Type"
-            subtitle="By service"
-            data={ORDER_TYPE_BREAKDOWN}
-            isDark={isDark}
-          />
-        </View>
-
-        {/* ── Top Items ──────────────────────────────────────────────────────── */}
-        <SectionHeader title="Menu Performance" isDark={isDark} />
-        <TopItemsCard isDark={isDark} />
-      </ScrollView>
+      ) : (
+        <>
+          {activeTab === "overview" && (
+            <OverviewTab orders={filteredOrders} isDark={isDark} />
+          )}
+          {activeTab === "products" && (
+            <ProductsTab orders={filteredOrders} isDark={isDark} />
+          )}
+          {activeTab === "orders" && (
+            <OrdersTab orders={filteredOrders} isDark={isDark} />
+          )}
+        </>
+      )}
     </View>
   );
 }
