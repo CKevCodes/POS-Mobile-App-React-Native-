@@ -188,7 +188,10 @@ function HourlyChart({ isDark }: { isDark: boolean }) {
       <Text className="mb-4 text-xs text-gray-400 dark:text-gray-500">
         Peak hours highlighted
       </Text>
-      <View className="flex-row items-end justify-between" style={{ height: 80 }}>
+      <View
+        className="flex-row items-end justify-between"
+        style={{ height: 80 }}
+      >
         {HOURLY_BARS.map((b) => {
           const barHeight = Math.max(4, (b.val / maxVal) * 72);
           const isPeak = b.val >= 85;
@@ -270,10 +273,7 @@ function BreakdownCard({
       {/* Stacked bar */}
       <View className="flex-row h-3 mb-4 overflow-hidden rounded-full">
         {data.map((d, i) => (
-          <View
-            key={i}
-            style={{ flex: d.pct, backgroundColor: d.color }}
-          />
+          <View key={i} style={{ flex: d.pct, backgroundColor: d.color }} />
         ))}
       </View>
       {data.map((d, i) => (
@@ -323,15 +323,6 @@ export default function AnalyticsScreen() {
       <View className="px-5 pt-6 pb-4 bg-white border-b border-gray-100 dark:bg-gray-800 dark:border-gray-700">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center">
-            {showHamburger && (
-              <TouchableOpacity onPress={openSidebar} className="mr-3">
-                <Ionicons
-                  name="menu"
-                  size={28}
-                  color={isDark ? "white" : "black"}
-                />
-              </TouchableOpacity>
-            )}
             <View>
               <Text className="text-2xl font-black text-gray-900 dark:text-white">
                 Analytics
@@ -399,7 +390,10 @@ export default function AnalyticsScreen() {
             change={stats.revenueChange - 2}
             isDark={isDark}
           />
-          <View className="flex-1 p-4 bg-white shadow-sm dark:bg-gray-800 rounded-2xl" style={{ minWidth: 140 }}>
+          <View
+            className="flex-1 p-4 bg-white shadow-sm dark:bg-gray-800 rounded-2xl"
+            style={{ minWidth: 140 }}
+          >
             <View className="items-center justify-center mb-3 w-9 h-9 bg-green-50 dark:bg-green-900/30 rounded-xl">
               <MaterialCommunityIcons name="star" size={18} color="#009245" />
             </View>

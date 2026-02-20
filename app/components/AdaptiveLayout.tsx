@@ -208,22 +208,7 @@ const MobileLayout = ({ children }: LayoutProps) => {
           <View
             className="px-3"
             style={{ paddingBottom: Math.max(insets.bottom, 16) }}
-          >
-            <Pressable
-              onPress={toggleColorScheme}
-              className="flex-row items-center px-3 py-3 mt-3 rounded-lg active:bg-gray-100 dark:active:bg-gray-800"
-            >
-              <Ionicons
-                name={isDark ? "moon" : "sunny"}
-                size={22}
-                color={isDark ? "#F59E0B" : "#6366F1"}
-                style={{ marginRight: 12 }}
-              />
-              <Text className="text-gray-900 dark:text-white font-medium text-base">
-                {isDark ? "Dark Mode" : "Light Mode"}
-              </Text>
-            </Pressable>
-          </View>
+          ></View>
         </View>
       )}
     </View>
@@ -316,22 +301,7 @@ const DesktopLayout = ({ children }: LayoutProps) => {
         </View>
 
         {/* Desktop Footer */}
-        <View className="px-3">
-          <Pressable
-            onPress={toggleColorScheme}
-            className="flex-row items-center px-3 py-3 rounded-lg active:bg-gray-100 dark:active:bg-gray-800"
-          >
-            <Ionicons
-              name={isDark ? "moon" : "sunny"}
-              size={22}
-              color={isDark ? "#F59E0B" : "#6366F1"}
-              style={{ marginRight: 12 }}
-            />
-            <Text className="text-gray-900 dark:text-white font-medium text-base">
-              {isDark ? "Dark Mode" : "Light Mode"}
-            </Text>
-          </Pressable>
-        </View>
+        <View className="px-3"></View>
       </View>
 
       {/* Page content */}
