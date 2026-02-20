@@ -3,7 +3,7 @@ import { StatusBadge } from "./StatusBadge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type OrderType = "dine-in" | "takeout";
+type OrderType = "dine-in" | "takeout" | "delivery";
 type PaymentMethod = "Cash" | "Card" | "E-wallet";
 type PaymentStatus = "Paid" | "Unpaid" | "Refunded";
 type OrderStatus = "Preparing" | "Served" | "Done" | "Cancelled";
@@ -40,6 +40,8 @@ interface Order {
   completedAt?: string;
   cashTendered?: number;
   statusLog: StatusLog[];
+  /** Internal: numeric SQLite row id — used by the DB layer only */
+  _dbId?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ interface Order {
 const ORDER_TYPE_ICON: Record<OrderType, string> = {
   "dine-in": "🍽",
   takeout: "🥡",
+  delivery: "🛵",
 };
 
 const ORDER_STATUS_CLS: Record<OrderStatus, string> = {

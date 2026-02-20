@@ -22,13 +22,35 @@ export interface DbProductVariant {
   created_at: string;
 }
 
+export type OrderStatus = "Preparing" | "Served" | "Done" | "Cancelled";
+export type PaymentStatus = "Paid" | "Unpaid" | "Refunded";
+export type PaymentMethod = "Cash" | "Card" | "E-wallet";
+export type OrderType = "dine-in" | "takeout" | "delivery";
+
+export interface StatusLogEntry {
+  from: OrderStatus | null;
+  to: OrderStatus;
+  at: string;
+}
+
 export interface DbOrder {
   id: number;
   order_number: string;
-  order_type: "dine-in" | "takeout" | "delivery";
-  payment_status: "Paid" | "Unpaid" | "Refunded";
-  payment_method: "Cash" | "Card" | "E-wallet";
+  receipt_number: string;
+  table_number: string | null;
+  order_type: OrderType;
+  order_status: OrderStatus;
+  payment_status: PaymentStatus;
+  payment_method: PaymentMethod;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  service_charge: number;
   total_amount: number;
+  cash_tendered: number | null;
+  completed_at: string | null;
+  /** JSON-serialised StatusLogEntry[] stored as TEXT in SQLite */
+  status_log: string;
   created_at: string;
 }
 
@@ -36,8 +58,11 @@ export interface DbOrderItem {
   id: number;
   order_id: number;
   product_variant_id: number;
+  item_name: string;
   quantity: number;
   price: number;
+  /** JSON-serialised string[] stored as TEXT in SQLite */
+  modifiers: string;
   money_tendered: number;
   change: number;
   subtotal: number;
@@ -68,8 +93,5 @@ export interface ProductWithVariants extends DbProduct {
 }
 
 export interface OrderWithItems extends DbOrder {
-  items: (DbOrderItem & {
-    variant_name: string;
-    product_name: string;
-  })[];
+  items: DbOrderItem[];
 }

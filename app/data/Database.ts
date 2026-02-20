@@ -65,6 +65,23 @@ const MIGRATIONS: string[] = [
     applied_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+
+  // v2 — full Order fields needed by the Order History UI
+  `
+  ALTER TABLE Orders ADD COLUMN receipt_number   TEXT    NOT NULL DEFAULT '';
+  ALTER TABLE Orders ADD COLUMN table_number     TEXT;
+  ALTER TABLE Orders ADD COLUMN order_status     TEXT    NOT NULL DEFAULT 'Preparing';
+  ALTER TABLE Orders ADD COLUMN subtotal         REAL    NOT NULL DEFAULT 0;
+  ALTER TABLE Orders ADD COLUMN tax              REAL    NOT NULL DEFAULT 0;
+  ALTER TABLE Orders ADD COLUMN discount         REAL    NOT NULL DEFAULT 0;
+  ALTER TABLE Orders ADD COLUMN service_charge   REAL    NOT NULL DEFAULT 0;
+  ALTER TABLE Orders ADD COLUMN cash_tendered    REAL;
+  ALTER TABLE Orders ADD COLUMN completed_at     TEXT;
+  ALTER TABLE Orders ADD COLUMN status_log       TEXT    NOT NULL DEFAULT '[]';
+
+  ALTER TABLE OrderItems ADD COLUMN item_name    TEXT    NOT NULL DEFAULT '';
+  ALTER TABLE OrderItems ADD COLUMN modifiers    TEXT    NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export async function runMigrations(): Promise<void> {

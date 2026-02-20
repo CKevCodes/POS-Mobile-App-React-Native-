@@ -1,6 +1,7 @@
 import { useColorScheme } from "nativewind";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -11,9 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 // ─── Component Imports ────────────────────────────────────────────────────────
-import { StatusBadge } from "../components/StatusBadge";
 import { FilterChip } from "../components/FilterChip";
-import { SectionLabel } from "../components/SectionLabel";
 import { PaginationBar } from "../components/PaganationBar";
 import { OrderRow } from "../components/OrderRow";
 import {
@@ -31,6 +30,10 @@ import {
 } from "../components/StatusUpdateModal";
 import { OrderDetailModal } from "../components/OrderDetailModal";
 
+// ─── DB Imports ───────────────────────────────────────────────────────────────
+import { ordersRepo } from "../data/Orders";
+import { dbOrderToUi, uiItemsToDb } from "../data/OrderAdapter";
+
 // ─── Type Imports ─────────────────────────────────────────────────────────────
 import type {
   Order,
@@ -41,330 +44,23 @@ import type {
   PaymentStatus,
 } from "../components/OrderRow";
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_ORDERS: Order[] = [
-  {
-    id: "ORD-0001",
-    receiptNumber: "RCP-202502-0001",
-    tableNumber: "T-04",
-    orderType: "dine-in",
-    items: [
-      {
-        id: "i1",
-        name: "Wagyu Burger",
-        quantity: 2,
-        unitPrice: 680,
-        modifiers: ["Medium-rare", "Extra cheese"],
-      },
-      {
-        id: "i2",
-        name: "Truffle Fries",
-        quantity: 2,
-        unitPrice: 220,
-        modifiers: [],
-      },
-      {
-        id: "i3",
-        name: "Sparkling Water",
-        quantity: 2,
-        unitPrice: 120,
-        modifiers: ["No ice"],
-      },
-    ],
-    subtotal: 2040,
-    tax: 244.8,
-    discount: 100,
-    serviceCharge: 204,
-    total: 2388.8,
-    paymentMethod: "Card",
-    paymentStatus: "Paid",
-    orderStatus: "Done",
-    createdAt: "2025-02-17T10:15:00",
-    completedAt: "2025-02-17T11:02:00",
-    statusLog: [
-      { from: null, to: "Preparing", at: "2025-02-17T10:15:00" },
-      { from: "Preparing", to: "Served", at: "2025-02-17T10:45:00" },
-      { from: "Served", to: "Done", at: "2025-02-17T11:02:00" },
-    ],
-  },
-  {
-    id: "ORD-0002",
-    receiptNumber: "RCP-202502-0002",
-    tableNumber: "T-07",
-    orderType: "dine-in",
-    items: [
-      {
-        id: "i4",
-        name: "Grilled Salmon",
-        quantity: 1,
-        unitPrice: 890,
-        modifiers: ["Well done"],
-      },
-      {
-        id: "i5",
-        name: "Caesar Salad",
-        quantity: 1,
-        unitPrice: 340,
-        modifiers: ["Dressing on side"],
-      },
-      {
-        id: "i6",
-        name: "Mango Cheesecake",
-        quantity: 2,
-        unitPrice: 280,
-        modifiers: [],
-      },
-    ],
-    subtotal: 1790,
-    tax: 214.8,
-    discount: 0,
-    serviceCharge: 179,
-    total: 2183.8,
-    paymentMethod: "E-wallet",
-    paymentStatus: "Paid",
-    orderStatus: "Served",
-    createdAt: "2025-02-17T11:30:00",
-    statusLog: [
-      { from: null, to: "Preparing", at: "2025-02-17T11:30:00" },
-      { from: "Preparing", to: "Served", at: "2025-02-17T12:00:00" },
-    ],
-  },
-  {
-    id: "ORD-0003",
-    receiptNumber: "RCP-202502-0003",
-    orderType: "takeout",
-    items: [
-      {
-        id: "i7",
-        name: "Chicken Sandwich",
-        quantity: 3,
-        unitPrice: 320,
-        modifiers: ["No pickles"],
-      },
-      {
-        id: "i8",
-        name: "Iced Coffee",
-        quantity: 3,
-        unitPrice: 180,
-        modifiers: ["Less sweet"],
-      },
-    ],
-    subtotal: 1500,
-    tax: 180,
-    discount: 150,
-    serviceCharge: 0,
-    total: 1530,
-    paymentMethod: "Cash",
-    paymentStatus: "Paid",
-    orderStatus: "Done",
-    createdAt: "2025-02-17T12:00:00",
-    completedAt: "2025-02-17T12:25:00",
-    cashTendered: 2000,
-    statusLog: [
-      { from: null, to: "Preparing", at: "2025-02-17T12:00:00" },
-      { from: "Preparing", to: "Done", at: "2025-02-17T12:25:00" },
-    ],
-  },
-  {
-    id: "ORD-0004",
-    receiptNumber: "RCP-202502-0004",
-    tableNumber: "T-02",
-    orderType: "dine-in",
-    items: [
-      {
-        id: "i9",
-        name: "Pizza Margherita",
-        quantity: 1,
-        unitPrice: 580,
-        modifiers: ["Thin crust"],
-      },
-      {
-        id: "i10",
-        name: "Garlic Bread",
-        quantity: 2,
-        unitPrice: 120,
-        modifiers: [],
-      },
-    ],
-    subtotal: 820,
-    tax: 98.4,
-    discount: 0,
-    serviceCharge: 82,
-    total: 1000.4,
-    paymentMethod: "Cash",
-    paymentStatus: "Unpaid",
-    orderStatus: "Preparing",
-    createdAt: "2025-02-17T13:10:00",
-    statusLog: [{ from: null, to: "Preparing", at: "2025-02-17T13:10:00" }],
-  },
-  {
-    id: "ORD-0005",
-    receiptNumber: "RCP-202502-0005",
-    tableNumber: "T-11",
-    orderType: "dine-in",
-    items: [
-      {
-        id: "i11",
-        name: "Beef Steak Platter",
-        quantity: 2,
-        unitPrice: 950,
-        modifiers: ["Medium"],
-      },
-      {
-        id: "i12",
-        name: "Red Wine (glass)",
-        quantity: 4,
-        unitPrice: 350,
-        modifiers: [],
-      },
-      {
-        id: "i13",
-        name: "Tiramisu",
-        quantity: 2,
-        unitPrice: 290,
-        modifiers: [],
-      },
-    ],
-    subtotal: 3680,
-    tax: 441.6,
-    discount: 368,
-    serviceCharge: 368,
-    total: 4121.6,
-    paymentMethod: "Card",
-    paymentStatus: "Refunded",
-    orderStatus: "Cancelled",
-    createdAt: "2025-02-16T19:30:00",
-    completedAt: "2025-02-16T20:00:00",
-    statusLog: [
-      { from: null, to: "Preparing", at: "2025-02-16T19:30:00" },
-      { from: "Preparing", to: "Cancelled", at: "2025-02-16T20:00:00" },
-    ],
-  },
-  {
-    id: "ORD-0006",
-    receiptNumber: "RCP-202502-0006",
-    orderType: "takeout",
-    items: [
-      {
-        id: "i14",
-        name: "Bagel with Cream Cheese",
-        quantity: 2,
-        unitPrice: 210,
-        modifiers: [],
-      },
-      {
-        id: "i15",
-        name: "Cold Brew Coffee",
-        quantity: 2,
-        unitPrice: 220,
-        modifiers: ["Oat milk"],
-      },
-    ],
-    subtotal: 860,
-    tax: 103.2,
-    discount: 0,
-    serviceCharge: 0,
-    total: 963.2,
-    paymentMethod: "E-wallet",
-    paymentStatus: "Paid",
-    orderStatus: "Done",
-    createdAt: "2025-02-16T08:45:00",
-    completedAt: "2025-02-16T09:05:00",
-    statusLog: [
-      { from: null, to: "Preparing", at: "2025-02-16T08:45:00" },
-      { from: "Preparing", to: "Done", at: "2025-02-16T09:05:00" },
-    ],
-  },
-  {
-    id: "ORD-0007",
-    receiptNumber: "RCP-202502-0007",
-    tableNumber: "T-01",
-    orderType: "dine-in",
-    items: [
-      {
-        id: "i16",
-        name: "Ramen Tonkotsu",
-        quantity: 2,
-        unitPrice: 480,
-        modifiers: ["Spicy", "Extra chashu"],
-      },
-      {
-        id: "i17",
-        name: "Gyoza (6pcs)",
-        quantity: 1,
-        unitPrice: 280,
-        modifiers: [],
-      },
-    ],
-    subtotal: 1240,
-    tax: 148.8,
-    discount: 0,
-    serviceCharge: 124,
-    total: 1512.8,
-    paymentMethod: "Cash",
-    paymentStatus: "Paid",
-    orderStatus: "Served",
-    createdAt: "2025-02-17T13:45:00",
-    cashTendered: 2000,
-    statusLog: [
-      { from: null, to: "Preparing", at: "2025-02-17T13:45:00" },
-      { from: "Preparing", to: "Served", at: "2025-02-17T14:10:00" },
-    ],
-  },
-  {
-    id: "ORD-0008",
-    receiptNumber: "RCP-202502-0008",
-    tableNumber: "T-03",
-    orderType: "dine-in",
-    items: [
-      {
-        id: "i18",
-        name: "Pasta Carbonara",
-        quantity: 2,
-        unitPrice: 420,
-        modifiers: [],
-      },
-      {
-        id: "i19",
-        name: "Lemonade",
-        quantity: 2,
-        unitPrice: 150,
-        modifiers: ["Extra ice"],
-      },
-    ],
-    subtotal: 1140,
-    tax: 136.8,
-    discount: 50,
-    serviceCharge: 114,
-    total: 1340.8,
-    paymentMethod: "Card",
-    paymentStatus: "Unpaid",
-    orderStatus: "Preparing",
-    createdAt: "2025-02-17T14:20:00",
-    statusLog: [{ from: null, to: "Preparing", at: "2025-02-17T14:20:00" }],
-  },
-];
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 50;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const toDateStr = (iso: string) => iso.slice(0, 10);
-
-const recalcOrder = (
-  items: OrderItem[],
-  discount: number,
-  serviceCharge: number,
-): Pick<Order, "subtotal" | "tax" | "total"> => {
-  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-  const tax = parseFloat((subtotal * 0.12).toFixed(2));
-  const total = parseFloat(
-    (subtotal + tax - discount + serviceCharge).toFixed(2),
-  );
-  return { subtotal, tax, total };
+const activeDateRange = (
+  preset: DatePreset,
+  custom: DateRange,
+): DateRange | null => {
+  if (preset === "all") return null;
+  if (preset === "today") return { from: todayStr(), to: todayStr() };
+  if (preset === "yesterday") return { from: daysAgo(1), to: daysAgo(1) };
+  if (preset === "last7") return { from: daysAgo(7), to: todayStr() };
+  if (preset === "last30") return { from: daysAgo(30), to: todayStr() };
+  if (preset === "custom") return custom;
+  return null;
 };
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -374,7 +70,9 @@ export default function OrderHistoryScreen() {
   const isDark = colorScheme === "dark";
 
   // ─── State ──────────────────────────────────────────────────────────────────
-  const [orders, setOrders] = useState<Order[]>(MOCK_ORDERS);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "All">("All");
   const [filterPayment, setFilterPayment] = useState<PaymentMethod | "All">(
@@ -394,7 +92,43 @@ export default function OrderHistoryScreen() {
   const [showEditItems, setShowEditItems] = useState(false);
   const [showStatusUpdate, setShowStatusUpdate] = useState(false);
 
-  // ─── Computed Values ────────────────────────────────────────────────────────
+  // ─── Load from DB ────────────────────────────────────────────────────────────
+
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const range = activeDateRange(datePreset, dateRange);
+      const dbRows = await ordersRepo.filter({
+        search: search || undefined,
+        orderStatus: filterStatus !== "All" ? filterStatus : undefined,
+        paymentStatus: filterPayment !== "All" ? filterPayment : undefined,
+        paymentMethod: filterPayment !== "All" ? filterPayment : undefined,
+        orderType: filterType !== "All" ? filterType : undefined,
+        dateFrom: range?.from,
+        dateTo: range?.to,
+      });
+
+      // For each order, also load its items so the UI has full detail
+      const uiOrders: Order[] = await Promise.all(
+        dbRows.map(async (dbOrder) => {
+          const dbItems = await ordersRepo.items.getByOrder(dbOrder.id);
+          return dbOrderToUi(dbOrder, dbItems);
+        }),
+      );
+
+      setOrders(uiOrders);
+    } catch (e) {
+      console.error("[OrderHistory] load error", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, filterStatus, filterPayment, filterType, datePreset, dateRange]);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  // ─── Computed ────────────────────────────────────────────────────────────────
 
   const dateLabel = useMemo(() => {
     const map: Record<DatePreset, string> = {
@@ -408,48 +142,9 @@ export default function OrderHistoryScreen() {
     return map[datePreset];
   }, [datePreset, dateRange]);
 
-  const activeDateRange = useMemo((): DateRange | null => {
-    if (datePreset === "all") return null;
-    if (datePreset === "today") return { from: todayStr(), to: todayStr() };
-    if (datePreset === "yesterday") return { from: daysAgo(1), to: daysAgo(1) };
-    if (datePreset === "last7") return { from: daysAgo(7), to: todayStr() };
-    if (datePreset === "last30") return { from: daysAgo(30), to: todayStr() };
-    if (datePreset === "custom") return dateRange;
-    return null;
-  }, [datePreset, dateRange]);
+  const totalPages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE));
+  const paginated = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const filtered = useMemo(() => {
-    return orders.filter((o) => {
-      if (search) {
-        const q = search.toLowerCase();
-        if (
-          !o.id.toLowerCase().includes(q) &&
-          !o.receiptNumber.toLowerCase().includes(q)
-        )
-          return false;
-      }
-      if (filterStatus !== "All" && o.orderStatus !== filterStatus)
-        return false;
-      if (filterPayment !== "All" && o.paymentMethod !== filterPayment)
-        return false;
-      if (filterType !== "All" && o.orderType !== filterType) return false;
-      if (activeDateRange) {
-        const d = toDateStr(o.createdAt);
-        if (d < activeDateRange.from || d > activeDateRange.to) return false;
-      }
-      return true;
-    });
-  }, [
-    orders,
-    search,
-    filterStatus,
-    filterPayment,
-    filterType,
-    activeDateRange,
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const hasActiveFilters =
     filterStatus !== "All" ||
     filterPayment !== "All" ||
@@ -457,7 +152,7 @@ export default function OrderHistoryScreen() {
     datePreset !== "all" ||
     search !== "";
 
-  // ─── Handlers ───────────────────────────────────────────────────────────────
+  // ─── Handlers ────────────────────────────────────────────────────────────────
 
   const handleDateApply = (preset: DatePreset, range?: DateRange) => {
     setDatePreset(preset);
@@ -465,64 +160,94 @@ export default function OrderHistoryScreen() {
     setPage(1);
   };
 
-  const handleStatusUpdate = (orderId: string, newStatus: OrderStatus) => {
-    const now = new Date().toISOString();
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (
-          o.id !== orderId ||
-          !ALLOWED_TRANSITIONS[o.orderStatus].includes(newStatus)
-        )
-          return o;
-        return {
-          ...o,
-          orderStatus: newStatus,
-          completedAt:
-            newStatus === "Done" || newStatus === "Cancelled"
-              ? now
-              : o.completedAt,
-          statusLog: [
-            ...o.statusLog,
-            { from: o.orderStatus, to: newStatus, at: now },
-          ],
-        };
-      }),
+  const handleStatusUpdate = async (
+    orderId: string,
+    newStatus: OrderStatus,
+  ) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || !order._dbId) return;
+
+    await ordersRepo.updateStatus(
+      order._dbId,
+      newStatus,
+      JSON.stringify(
+        order.statusLog.map((l) => ({ from: l.from, to: l.to, at: l.at })),
+      ),
     );
-    setSelectedOrder((prev) =>
-      prev?.id === orderId
-        ? {
-            ...prev,
-            orderStatus: newStatus,
-            statusLog: [
-              ...prev.statusLog,
-              { from: prev.orderStatus, to: newStatus, at: now },
-            ],
-          }
-        : prev,
-    );
+
+    // Reload to sync UI
+    await loadOrders();
+
+    // Keep selected order in sync
+    setSelectedOrder((prev) => {
+      if (!prev || prev.id !== orderId) return prev;
+      const now = new Date().toISOString();
+      return {
+        ...prev,
+        orderStatus: newStatus,
+        statusLog: [
+          ...prev.statusLog,
+          { from: prev.orderStatus, to: newStatus, at: now },
+        ],
+        completedAt:
+          newStatus === "Done" || newStatus === "Cancelled"
+            ? now
+            : prev.completedAt,
+      };
+    });
   };
 
-  const handleEdit = (orderId: string, updates: Partial<Order>) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)),
-    );
+  const handleEdit = async (orderId: string, updates: Partial<Order>) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || !order._dbId) return;
+
+    await ordersRepo.update(order._dbId, {
+      order_type: updates.orderType as any,
+      payment_status: updates.paymentStatus as any,
+      payment_method: updates.paymentMethod as any,
+      table_number: updates.tableNumber ?? null,
+      subtotal: updates.subtotal,
+      tax: updates.tax,
+      discount: updates.discount,
+      service_charge: updates.serviceCharge,
+      total_amount: updates.total,
+    });
+
+    await loadOrders();
+
     setSelectedOrder((prev) =>
       prev?.id === orderId ? { ...prev, ...updates } : prev,
     );
   };
 
-  const handleItemsSave = (orderId: string, newItems: OrderItem[]) => {
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id !== orderId) return o;
-        const recalc = recalcOrder(newItems, o.discount, o.serviceCharge);
-        return { ...o, items: newItems, ...recalc };
-      }),
+  const handleItemsSave = async (orderId: string, newItems: OrderItem[]) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || !order._dbId) return;
+
+    const dbItems = uiItemsToDb(order._dbId, newItems);
+    await ordersRepo.items.replaceAll(order._dbId, dbItems);
+
+    // Recalculate totals
+    const subtotal = newItems.reduce(
+      (sum, i) => sum + i.quantity * i.unitPrice,
+      0,
     );
+    const tax = parseFloat((subtotal * 0.12).toFixed(2));
+    const total = parseFloat(
+      (subtotal + tax - order.discount + order.serviceCharge).toFixed(2),
+    );
+
+    await ordersRepo.update(order._dbId, {
+      subtotal,
+      tax,
+      total_amount: total,
+    });
+
+    await loadOrders();
+
     setSelectedOrder((prev) => {
-      if (prev?.id !== orderId) return prev;
-      const recalc = recalcOrder(newItems, prev.discount, prev.serviceCharge);
-      return { ...prev, items: newItems, ...recalc };
+      if (!prev || prev.id !== orderId) return prev;
+      return { ...prev, items: newItems, subtotal, tax, total };
     });
   };
 
@@ -540,11 +265,11 @@ export default function OrderHistoryScreen() {
     setPage(1);
   };
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-800">
-      {/* ── Header ───────────────────────────────────────────────────────────── */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <View className="px-5 pt-6 pb-4 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
         <View className="flex-row items-end justify-between mb-4">
           <Text className="text-2xl font-black text-gray-900 dark:text-white">
@@ -616,13 +341,12 @@ export default function OrderHistoryScreen() {
 
           <Pressable
             onPress={() => setShowDateModal(true)}
-            // Add 'flex-shrink-0' and ensure no 'max-width' is cutting it off
             className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 flex-shrink-0
-  ${
-    datePreset !== "all"
-      ? "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800"
-      : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-  }`}
+              ${
+                datePreset !== "all"
+                  ? "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800"
+                  : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+              }`}
           >
             <Ionicons
               name="calendar-outline"
@@ -638,7 +362,6 @@ export default function OrderHistoryScreen() {
               }
             />
             <Text
-              // numberOfLines={1} ensures it stays on one line
               numberOfLines={1}
               className={`text-xs font-semibold ${datePreset !== "all" ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"}`}
             >
@@ -661,7 +384,7 @@ export default function OrderHistoryScreen() {
         </View>
       </View>
 
-      {/* ── Filter Panel ─────────────────────────────────────────────────────── */}
+      {/* ── Filter Panel ──────────────────────────────────────────────────── */}
       {showFilters && (
         <View className="px-4 py-4 bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700">
           <View className="flex-row items-center justify-between mb-3">
@@ -737,53 +460,66 @@ export default function OrderHistoryScreen() {
         </View>
       )}
 
-      {/* ── Order List ───────────────────────────────────────────────────────── */}
-      <FlatList
-        data={paginated}
-        keyExtractor={(o) => o.id}
-        contentContainerClassName="p-4 pb-4"
-        renderItem={({ item }) => (
-          <OrderRow order={item} onPress={() => openOrder(item)} />
-        )}
-        ListEmptyComponent={
-          <View className="items-center pt-16">
-            <Ionicons
-              name="receipt-outline"
-              size={48}
-              color={isDark ? "#4B5563" : "#D1D5DB"}
-            />
-            <Text className="mt-4 text-base font-extrabold text-gray-700 dark:text-gray-300">
-              No orders found
-            </Text>
-            <Text className="mt-1 text-sm text-center text-gray-400 dark:text-gray-500">
-              Try adjusting your filters.
-            </Text>
-            {hasActiveFilters && (
-              <Pressable
-                onPress={resetFilters}
-                className="mt-5 bg-blue-600 px-6 py-2.5 rounded-xl"
-              >
-                <Text className="text-sm font-bold text-white">
-                  Clear Filters
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        }
-      />
+      {/* ── Order List ────────────────────────────────────────────────────── */}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator
+            size="large"
+            color={isDark ? "#60A5FA" : "#2563EB"}
+          />
+        </View>
+      ) : (
+        <FlatList
+          data={paginated}
+          keyExtractor={(o) => o.id}
+          contentContainerClassName="p-4 pb-4"
+          renderItem={({ item }) => (
+            <OrderRow order={item} onPress={() => openOrder(item)} />
+          )}
+          ListEmptyComponent={
+            <View className="items-center pt-16">
+              <Ionicons
+                name="receipt-outline"
+                size={48}
+                color={isDark ? "#4B5563" : "#D1D5DB"}
+              />
+              <Text className="mt-4 text-base font-extrabold text-gray-700 dark:text-gray-300">
+                No orders found
+              </Text>
+              <Text className="mt-1 text-sm text-center text-gray-400 dark:text-gray-500">
+                {hasActiveFilters
+                  ? "Try adjusting your filters."
+                  : "Orders placed from the cashier will appear here."}
+              </Text>
+              {hasActiveFilters && (
+                <Pressable
+                  onPress={resetFilters}
+                  className="mt-5 bg-blue-600 px-6 py-2.5 rounded-xl"
+                >
+                  <Text className="text-sm font-bold text-white">
+                    Clear Filters
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          }
+        />
+      )}
 
-      {/* ── Sticky Pagination Bar ─────────────────────────────────────────────── */}
-      <PaginationBar
-        page={page}
-        totalPages={totalPages}
-        totalItems={filtered.length}
-        isDark={isDark}
-        onPrev={() => setPage((p) => p - 1)}
-        onNext={() => setPage((p) => p + 1)}
-        pageSize={PAGE_SIZE}
-      />
+      {/* ── Pagination ────────────────────────────────────────────────────── */}
+      {!loading && (
+        <PaginationBar
+          page={page}
+          totalPages={totalPages}
+          totalItems={orders.length}
+          isDark={isDark}
+          onPrev={() => setPage((p) => p - 1)}
+          onNext={() => setPage((p) => p + 1)}
+          pageSize={PAGE_SIZE}
+        />
+      )}
 
-      {/* ── Modals ───────────────────────────────────────────────────────────── */}
+      {/* ── Modals ────────────────────────────────────────────────────────── */}
       <DateFilterModal
         visible={showDateModal}
         onClose={() => setShowDateModal(false)}

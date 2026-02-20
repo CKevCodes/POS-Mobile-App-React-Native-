@@ -1,4 +1,4 @@
-import { getDb } from "./Database";
+import { getDb } from "../data/Database";
 import type {
   DbOrder,
   DbOrderItem,
@@ -6,12 +6,14 @@ import type {
   CreateOrder,
   UpdateOrder,
   CreateOrderItem,
+  OrderStatus,
+  StatusLogEntry,
 } from "../types/types";
 
 // ─── Orders Repository ────────────────────────────────────────────────────────
 
 export const ordersRepo = {
-  // ── Orders ───────────────────────────────────────────────────────────────────
+  // ── Read ─────────────────────────────────────────────────────────────────────
 
   async getAll(): Promise<DbOrder[]> {
     const db = await getDb();
@@ -36,7 +38,6 @@ export const ordersRepo = {
     );
   },
 
-  /** Paginated list, newest first */
   async getPaginated(limit: number, offset: number): Promise<DbOrder[]> {
     const db = await getDb();
     return db.getAllAsync<DbOrder>(
@@ -54,36 +55,22 @@ export const ordersRepo = {
     return row?.n ?? 0;
   },
 
-  /**
-   * Full order with enriched items (includes variant_name, product_name).
-   */
   async getWithItems(id: number): Promise<OrderWithItems | null> {
     const db = await getDb();
-
     const order = await db.getFirstAsync<DbOrder>(
       "SELECT * FROM Orders WHERE id = ?;",
       id
     );
     if (!order) return null;
-
-    const items = await db.getAllAsync<
-      DbOrderItem & { variant_name: string; product_name: string }
-    >(
-      `SELECT
-         oi.*,
-         pv.variant_name,
-         p.name AS product_name
-       FROM OrderItems oi
-       JOIN ProductVariants pv ON pv.id = oi.product_variant_id
-       JOIN Products p         ON p.id  = pv.product_id
-       WHERE oi.order_id = ?;`,
+    const items = await db.getAllAsync<DbOrderItem>(
+      "SELECT * FROM OrderItems WHERE order_id = ?;",
       id
     );
-
     return { ...order, items };
   },
 
-  /** Create order + items in a single transaction. Returns the new order id. */
+  // ── Write ─────────────────────────────────────────────────────────────────────
+
   async createWithItems(
     orderData: CreateOrder,
     items: Omit<CreateOrderItem, "order_id">[]
@@ -92,28 +79,45 @@ export const ordersRepo = {
     let orderId = 0;
 
     await db.withTransactionAsync(async () => {
-      const orderResult = await db.runAsync(
-        `INSERT INTO Orders
-           (order_number, order_type, payment_status, payment_method, total_amount)
-         VALUES (?, ?, ?, ?, ?);`,
+      const r = await db.runAsync(
+        `INSERT INTO Orders (
+           order_number, receipt_number, table_number,
+           order_type, order_status,
+           payment_status, payment_method,
+           subtotal, tax, discount, service_charge, total_amount,
+           cash_tendered, completed_at, status_log
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);`,
         orderData.order_number,
+        orderData.receipt_number,
+        orderData.table_number ?? null,
         orderData.order_type,
+        orderData.order_status,
         orderData.payment_status,
         orderData.payment_method,
-        orderData.total_amount
+        orderData.subtotal,
+        orderData.tax,
+        orderData.discount,
+        orderData.service_charge,
+        orderData.total_amount,
+        orderData.cash_tendered ?? null,
+        orderData.completed_at ?? null,
+        orderData.status_log
       );
-      orderId = orderResult.lastInsertRowId;
+      orderId = r.lastInsertRowId;
 
       for (const item of items) {
         await db.runAsync(
-          `INSERT INTO OrderItems
-             (order_id, product_variant_id, quantity, price,
-              money_tendered, change, subtotal)
-           VALUES (?, ?, ?, ?, ?, ?, ?);`,
+          `INSERT INTO OrderItems (
+             order_id, product_variant_id, item_name,
+             quantity, price, modifiers,
+             money_tendered, change, subtotal
+           ) VALUES (?,?,?,?,?,?,?,?,?);`,
           orderId,
           item.product_variant_id,
+          item.item_name,
           item.quantity,
           item.price,
+          item.modifiers,
           item.money_tendered,
           item.change,
           item.subtotal
@@ -129,99 +133,159 @@ export const ordersRepo = {
     const fields: string[] = [];
     const values: any[] = [];
 
-    if (data.order_type !== undefined) { fields.push("order_type = ?"); values.push(data.order_type); }
-    if (data.payment_status !== undefined) { fields.push("payment_status = ?"); values.push(data.payment_status); }
-    if (data.payment_method !== undefined) { fields.push("payment_method = ?"); values.push(data.payment_method); }
-    if (data.total_amount !== undefined) { fields.push("total_amount = ?"); values.push(data.total_amount); }
+    const map: Array<[keyof UpdateOrder, string]> = [
+      ["order_type", "order_type = ?"],
+      ["order_status", "order_status = ?"],
+      ["payment_status", "payment_status = ?"],
+      ["payment_method", "payment_method = ?"],
+      ["table_number", "table_number = ?"],
+      ["subtotal", "subtotal = ?"],
+      ["tax", "tax = ?"],
+      ["discount", "discount = ?"],
+      ["service_charge", "service_charge = ?"],
+      ["total_amount", "total_amount = ?"],
+      ["cash_tendered", "cash_tendered = ?"],
+      ["completed_at", "completed_at = ?"],
+      ["status_log", "status_log = ?"],
+    ];
+
+    for (const [key, sql] of map) {
+      if (data[key] !== undefined) {
+        fields.push(sql);
+        values.push(data[key]);
+      }
+    }
 
     if (fields.length === 0) return;
     values.push(id);
-
     await db.runAsync(
       `UPDATE Orders SET ${fields.join(", ")} WHERE id = ?;`,
       ...values
     );
   },
 
+  async updateStatus(
+    id: number,
+    newStatus: OrderStatus,
+    currentStatusLog: string
+  ): Promise<void> {
+    const db = await getDb();
+    const order = await db.getFirstAsync<Pick<DbOrder, "order_status">>(
+      "SELECT order_status FROM Orders WHERE id = ?;",
+      id
+    );
+    if (!order) return;
+
+    const log: StatusLogEntry[] = JSON.parse(currentStatusLog || "[]");
+    log.push({
+      from: order.order_status,
+      to: newStatus,
+      at: new Date().toISOString(),
+    });
+
+    const isTerminal = newStatus === "Done" || newStatus === "Cancelled";
+    const completedAt = isTerminal ? new Date().toISOString() : null;
+
+    await db.runAsync(
+      `UPDATE Orders
+       SET order_status = ?, status_log = ?, completed_at = COALESCE(?, completed_at)
+       WHERE id = ?;`,
+      newStatus,
+      JSON.stringify(log),
+      completedAt,
+      id
+    );
+  },
+
   async delete(id: number): Promise<void> {
     const db = await getDb();
-    // Cascades to OrderItems via FK
     await db.runAsync("DELETE FROM Orders WHERE id = ?;", id);
   },
 
   // ── Filters ──────────────────────────────────────────────────────────────────
 
-  async filterByDate(from: string, to: string): Promise<DbOrder[]> {
+  async filter(opts: {
+    search?: string;
+    orderStatus?: string;
+    paymentStatus?: string;
+    paymentMethod?: string;
+    orderType?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<DbOrder[]> {
     const db = await getDb();
+    const clauses: string[] = [];
+    const values: any[] = [];
+
+    if (opts.search) {
+      clauses.push("(order_number LIKE ? OR receipt_number LIKE ?)");
+      values.push(`%${opts.search}%`, `%${opts.search}%`);
+    }
+    if (opts.orderStatus && opts.orderStatus !== "All") {
+      clauses.push("order_status = ?");
+      values.push(opts.orderStatus);
+    }
+    if (opts.paymentStatus && opts.paymentStatus !== "All") {
+      clauses.push("payment_status = ?");
+      values.push(opts.paymentStatus);
+    }
+    if (opts.paymentMethod && opts.paymentMethod !== "All") {
+      clauses.push("payment_method = ?");
+      values.push(opts.paymentMethod);
+    }
+    if (opts.orderType && opts.orderType !== "All") {
+      clauses.push("order_type = ?");
+      values.push(opts.orderType);
+    }
+    if (opts.dateFrom && opts.dateTo) {
+      clauses.push("date(created_at) BETWEEN date(?) AND date(?)");
+      values.push(opts.dateFrom, opts.dateTo);
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     return db.getAllAsync<DbOrder>(
-      `SELECT * FROM Orders
-       WHERE date(created_at) BETWEEN date(?) AND date(?)
-       ORDER BY created_at DESC;`,
-      from,
-      to
+      `SELECT * FROM Orders ${where} ORDER BY created_at DESC;`,
+      ...values
     );
   },
 
-  async filterByPaymentStatus(
-    status: DbOrder["payment_status"]
-  ): Promise<DbOrder[]> {
-    const db = await getDb();
-    return db.getAllAsync<DbOrder>(
-      "SELECT * FROM Orders WHERE payment_status = ? ORDER BY created_at DESC;",
-      status
-    );
-  },
-
-  // ── Analytics helpers ─────────────────────────────────────────────────────────
+  // ── Analytics ────────────────────────────────────────────────────────────────
 
   async totalRevenue(from?: string, to?: string): Promise<number> {
     const db = await getDb();
-    let row: { total: number | null };
-
-    if (from && to) {
-      row = (await db.getFirstAsync<{ total: number | null }>(
-        `SELECT SUM(total_amount) AS total FROM Orders
-         WHERE payment_status = 'Paid'
-           AND date(created_at) BETWEEN date(?) AND date(?);`,
-        from,
-        to
-      ))!;
-    } else {
-      row = (await db.getFirstAsync<{ total: number | null }>(
-        "SELECT SUM(total_amount) AS total FROM Orders WHERE payment_status = 'Paid';"
-      ))!;
-    }
-
+    const extra =
+      from && to
+        ? "AND date(created_at) BETWEEN date(?) AND date(?)"
+        : "";
+    const params: any[] = from && to ? [from, to] : [];
+    const row = await db.getFirstAsync<{ total: number | null }>(
+      `SELECT SUM(total_amount) AS total FROM Orders
+       WHERE payment_status = 'Paid' ${extra};`,
+      ...params
+    );
     return row?.total ?? 0;
   },
 
-  async topSellingVariants(
+  async topSellingItems(
     limit = 5,
     from?: string,
     to?: string
-  ): Promise<{ variant_name: string; product_name: string; total_qty: number }[]> {
+  ): Promise<{ item_name: string; total_qty: number }[]> {
     const db = await getDb();
-
-    const dateFilter =
+    const extra =
       from && to
-        ? `AND date(o.created_at) BETWEEN date('${from}') AND date('${to}')`
+        ? "AND date(o.created_at) BETWEEN date(?) AND date(?)"
         : "";
-
+    const params: any[] = from && to ? [from, to, limit] : [limit];
     return db.getAllAsync(
-      `SELECT
-         pv.variant_name,
-         p.name AS product_name,
-         SUM(oi.quantity) AS total_qty
+      `SELECT oi.item_name, SUM(oi.quantity) AS total_qty
        FROM OrderItems oi
-       JOIN Orders o           ON o.id  = oi.order_id
-       JOIN ProductVariants pv ON pv.id = oi.product_variant_id
-       JOIN Products p         ON p.id  = pv.product_id
-       WHERE o.payment_status = 'Paid'
-       ${dateFilter}
-       GROUP BY oi.product_variant_id
+       JOIN Orders o ON o.id = oi.order_id
+       WHERE o.payment_status = 'Paid' ${extra}
+       GROUP BY oi.item_name
        ORDER BY total_qty DESC
        LIMIT ?;`,
-      limit
+      ...params
     );
   },
 
@@ -236,25 +300,35 @@ export const ordersRepo = {
       );
     },
 
-    async create(data: CreateOrderItem): Promise<DbOrderItem> {
+    async replaceAll(
+      orderId: number,
+      items: Omit<CreateOrderItem, "order_id">[]
+    ): Promise<void> {
       const db = await getDb();
-      const result = await db.runAsync(
-        `INSERT INTO OrderItems
-           (order_id, product_variant_id, quantity, price,
-            money_tendered, change, subtotal)
-         VALUES (?, ?, ?, ?, ?, ?, ?);`,
-        data.order_id,
-        data.product_variant_id,
-        data.quantity,
-        data.price,
-        data.money_tendered,
-        data.change,
-        data.subtotal
-      );
-      return (await db.getFirstAsync<DbOrderItem>(
-        "SELECT * FROM OrderItems WHERE id = ?;",
-        result.lastInsertRowId
-      ))!;
+      await db.withTransactionAsync(async () => {
+        await db.runAsync(
+          "DELETE FROM OrderItems WHERE order_id = ?;",
+          orderId
+        );
+        for (const item of items) {
+          await db.runAsync(
+            `INSERT INTO OrderItems (
+               order_id, product_variant_id, item_name,
+               quantity, price, modifiers,
+               money_tendered, change, subtotal
+             ) VALUES (?,?,?,?,?,?,?,?,?);`,
+            orderId,
+            item.product_variant_id,
+            item.item_name,
+            item.quantity,
+            item.price,
+            item.modifiers,
+            item.money_tendered,
+            item.change,
+            item.subtotal
+          );
+        }
+      });
     },
 
     async delete(id: number): Promise<void> {
