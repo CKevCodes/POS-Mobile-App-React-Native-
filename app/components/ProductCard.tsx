@@ -1,10 +1,9 @@
 import { Pressable, View, Text, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { StockBadge, getStockStatus } from "./StockBadge";
 import type { Product } from "../types/inventory";
 import { formatCurrency } from "../types/inventory";
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ProductCardProps {
   product: Product;
@@ -12,16 +11,13 @@ interface ProductCardProps {
   onPress: () => void;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function ProductCard({
   product,
   categoryName,
   onPress,
 }: ProductCardProps) {
-  const stockStatus = getStockStatus(
-    product.quantityOnHand,
-    product.lowStockThreshold,
-  );
-
   const hasVariants = product.variants && product.variants.length > 0;
 
   return (
@@ -64,11 +60,6 @@ export function ProductCard({
 
           {/* Badges */}
           <View className="flex-row flex-wrap gap-1.5 mt-2">
-            <StockBadge
-              status={stockStatus}
-              quantity={product.quantityOnHand}
-            />
-
             {hasVariants && (
               <View className="bg-purple-100 dark:bg-purple-900/40 rounded px-2 py-0.5">
                 <Text className="text-xs font-bold text-purple-800 dark:text-purple-300">
@@ -76,7 +67,6 @@ export function ProductCard({
                 </Text>
               </View>
             )}
-
             <View className="bg-gray-100 dark:bg-gray-800 rounded px-2 py-0.5">
               <Text className="text-xs font-bold text-gray-500 dark:text-gray-400">
                 Cost: {formatCurrency(product.costPrice)}

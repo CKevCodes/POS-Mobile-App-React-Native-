@@ -3,7 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "nativewind";
 import type { Product } from "../types/inventory";
 import { formatCurrency, formatDate } from "../types/inventory";
-import { StockBadge, getStockStatus } from "./StockBadge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,7 +12,6 @@ interface ProductDetailModalProps {
   product: Product | null;
   categoryName: string;
   onEdit: () => void;
-  onAdjustStock: () => void;
   onViewHistory: () => void;
 }
 
@@ -25,7 +23,6 @@ export function ProductDetailModal({
   product,
   categoryName,
   onEdit,
-  onAdjustStock,
   onViewHistory,
 }: ProductDetailModalProps) {
   const { colorScheme } = useColorScheme();
@@ -33,10 +30,6 @@ export function ProductDetailModal({
 
   if (!product) return null;
 
-  const stockStatus = getStockStatus(
-    product.quantityOnHand,
-    product.lowStockThreshold,
-  );
   const profitMargin = product.sellingPrice - product.costPrice;
   const profitPercentage = ((profitMargin / product.costPrice) * 100).toFixed(
     1,
@@ -46,9 +39,7 @@ export function ProductDetailModal({
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View className="flex-1 bg-black/50">
-        <Pressable onPress={onClose} className="flex-1">
-          {/* Tap outside to close */}
-        </Pressable>
+        <Pressable onPress={onClose} className="flex-1" />
 
         <View className="bg-white dark:bg-gray-900 rounded-t-3xl max-h-[90%]">
           {/* Header */}
@@ -91,24 +82,6 @@ export function ProductDetailModal({
                   {product.description}
                 </Text>
               )}
-            </View>
-
-            {/* Stock Status */}
-            <View className="mb-6">
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm">
-                  Stock Status
-                </Text>
-                <StockBadge
-                  status={stockStatus}
-                  quantity={product.quantityOnHand}
-                />
-              </View>
-              <View className="bg-gray-100 dark:bg-gray-800 rounded-xl p-3">
-                <Text className="text-gray-500 dark:text-gray-400 text-xs mb-1">
-                  Low stock threshold: {product.lowStockThreshold}
-                </Text>
-              </View>
             </View>
 
             {/* Pricing Info */}
@@ -156,38 +129,28 @@ export function ProductDetailModal({
                     className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 mb-2"
                   >
                     <View className="flex-row items-center justify-between">
-                      <View>
-                        <Text className="text-gray-900 dark:text-white font-bold text-base">
-                          {variant.name}
-                        </Text>
-                        <Text className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-                          {formatCurrency(
-                            product.sellingPrice + variant.additionalPrice,
-                          )}
-                          {variant.additionalPrice !== 0 && (
-                            <Text className="text-gray-400">
-                              {" "}
-                              ({variant.additionalPrice > 0 ? "+" : ""}
-                              {formatCurrency(variant.additionalPrice)})
-                            </Text>
-                          )}
-                        </Text>
-                      </View>
-                      <View className="items-end">
-                        <Text className="text-gray-900 dark:text-white font-black text-lg">
-                          {variant.quantityOnHand}
-                        </Text>
-                        <Text className="text-gray-400 dark:text-gray-500 text-xs">
-                          in stock
-                        </Text>
-                      </View>
+                      <Text className="text-gray-900 dark:text-white font-bold text-base">
+                        {variant.name}
+                      </Text>
+                      <Text className="text-gray-700 dark:text-gray-300 font-semibold text-sm">
+                        {formatCurrency(
+                          product.sellingPrice + variant.additionalPrice,
+                        )}
+                        {variant.additionalPrice !== 0 && (
+                          <Text className="text-gray-400 dark:text-gray-500">
+                            {" "}
+                            ({variant.additionalPrice > 0 ? "+" : ""}
+                            {formatCurrency(variant.additionalPrice)})
+                          </Text>
+                        )}
+                      </Text>
                     </View>
                   </View>
                 ))}
               </View>
             )}
 
-            {/* Category & Metadata */}
+            {/* Information */}
             <View className="mb-6">
               <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm mb-3">
                 Information
@@ -266,33 +229,20 @@ export function ProductDetailModal({
               <Pressable
                 onPress={() => {
                   onClose();
-                  setTimeout(onAdjustStock, 300);
+                  setTimeout(onViewHistory, 300);
                 }}
-                className="flex-1 bg-green-600 rounded-xl py-3 flex-row items-center justify-center gap-2"
+                className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-xl py-3 flex-row items-center justify-center gap-2"
               >
-                <Ionicons name="swap-horizontal" size={18} color="#FFFFFF" />
-                <Text className="text-white font-bold text-sm">
-                  Adjust Stock
+                <Ionicons
+                  name="time-outline"
+                  size={18}
+                  color={isDark ? "#9CA3AF" : "#6B7280"}
+                />
+                <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm">
+                  History
                 </Text>
               </Pressable>
             </View>
-
-            <Pressable
-              onPress={() => {
-                onClose();
-                setTimeout(onViewHistory, 300);
-              }}
-              className="bg-gray-100 dark:bg-gray-800 rounded-xl py-3 flex-row items-center justify-center gap-2"
-            >
-              <Ionicons
-                name="time-outline"
-                size={18}
-                color={isDark ? "#9CA3AF" : "#6B7280"}
-              />
-              <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm">
-                View Stock History
-              </Text>
-            </Pressable>
           </View>
         </View>
       </View>

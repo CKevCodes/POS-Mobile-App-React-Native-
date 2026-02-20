@@ -8,10 +8,13 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "nativewind";
-import type { Product, Category, Variant } from "../types/inventory";
+import * as ImagePicker from "expo-image-picker";
+import type { Product, Category } from "../types/inventory";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +30,6 @@ interface VariantInput {
   id: string;
   name: string;
   additionalPrice: string;
-  quantityOnHand: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -49,8 +51,6 @@ export function AddProductModal({
   const [categoryId, setCategoryId] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
-  const [quantityOnHand, setQuantityOnHand] = useState("");
-  const [lowStockThreshold, setLowStockThreshold] = useState("");
   const [variants, setVariants] = useState<VariantInput[]>([]);
   const [showVariants, setShowVariants] = useState(false);
 
@@ -64,8 +64,6 @@ export function AddProductModal({
       setCategoryId(editProduct.categoryId);
       setCostPrice(editProduct.costPrice.toString());
       setSellingPrice(editProduct.sellingPrice.toString());
-      setQuantityOnHand(editProduct.quantityOnHand.toString());
-      setLowStockThreshold(editProduct.lowStockThreshold.toString());
 
       if (editProduct.variants && editProduct.variants.length > 0) {
         setShowVariants(true);
@@ -74,7 +72,6 @@ export function AddProductModal({
             id: v.id,
             name: v.name,
             additionalPrice: v.additionalPrice.toString(),
-            quantityOnHand: v.quantityOnHand.toString(),
           })),
         );
       }
@@ -82,6 +79,75 @@ export function AddProductModal({
       resetForm();
     }
   }, [editProduct, visible]);
+
+  // ─── Image Picker ────────────────────────────────────────────────────────────
+
+  const requestPermission = async (type: "camera" | "gallery") => {
+    if (type === "camera") {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Camera permission is needed to take photos.",
+        );
+        return false;
+      }
+    } else {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Photo library permission is needed to select images.",
+        );
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleTakePhoto = async () => {
+    const hasPermission = await requestPermission("camera");
+    if (!hasPermission) return;
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) setImage(result.assets[0].uri);
+  };
+
+  const handlePickFromGallery = async () => {
+    const hasPermission = await requestPermission("gallery");
+    if (!hasPermission) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) setImage(result.assets[0].uri);
+  };
+
+  const handleImagePress = () => {
+    Alert.alert(
+      "Product Image",
+      "Choose how to add an image",
+      [
+        { text: "Take Photo", onPress: handleTakePhoto },
+        { text: "Choose from Gallery", onPress: handlePickFromGallery },
+        image
+          ? {
+              text: "Remove Image",
+              style: "destructive",
+              onPress: () => setImage(""),
+            }
+          : null,
+        { text: "Cancel", style: "cancel" },
+      ].filter(Boolean) as any,
+    );
+  };
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
@@ -92,23 +158,12 @@ export function AddProductModal({
     setCategoryId("");
     setCostPrice("");
     setSellingPrice("");
-    setQuantityOnHand("");
-    setLowStockThreshold("");
     setVariants([]);
     setShowVariants(false);
   };
 
   const handleSave = () => {
-    if (
-      !name ||
-      !categoryId ||
-      !costPrice ||
-      !sellingPrice ||
-      !quantityOnHand ||
-      !lowStockThreshold
-    ) {
-      return;
-    }
+    if (!name || !categoryId || !costPrice || !sellingPrice) return;
 
     const productData: Omit<Product, "id" | "createdAt" | "updatedAt"> = {
       name,
@@ -117,16 +172,13 @@ export function AddProductModal({
       categoryId,
       costPrice: parseFloat(costPrice),
       sellingPrice: parseFloat(sellingPrice),
-      quantityOnHand: parseInt(quantityOnHand),
-      lowStockThreshold: parseInt(lowStockThreshold),
       isArchived: false,
       variants:
         showVariants && variants.length > 0
           ? variants.map((v) => ({
               id: v.id || `var-${Date.now()}-${Math.random()}`,
               name: v.name,
-              additionalPrice: parseFloat(v.additionalPrice),
-              quantityOnHand: parseInt(v.quantityOnHand),
+              additionalPrice: parseFloat(v.additionalPrice) || 0,
             }))
           : undefined,
     };
@@ -138,12 +190,7 @@ export function AddProductModal({
   const addVariant = () => {
     setVariants([
       ...variants,
-      {
-        id: `temp-${Date.now()}`,
-        name: "",
-        additionalPrice: "0",
-        quantityOnHand: "0",
-      },
+      { id: `temp-${Date.now()}`, name: "", additionalPrice: "0" },
     ]);
   };
 
@@ -195,6 +242,79 @@ export function AddProductModal({
               className="px-5 py-4"
               showsVerticalScrollIndicator={false}
             >
+              {/* ── Product Image Upload ──────────────────────────────────── */}
+              <View className="mb-5 items-center">
+                <Pressable onPress={handleImagePress} className="items-center">
+                  {image ? (
+                    <View className="relative">
+                      <Image
+                        source={{ uri: image }}
+                        className="w-28 h-28 rounded-2xl bg-gray-100 dark:bg-gray-800"
+                        resizeMode="cover"
+                      />
+                      <View className="absolute bottom-0 right-0 bg-blue-600 rounded-full p-1.5">
+                        <Ionicons name="pencil" size={12} color="#fff" />
+                      </View>
+                    </View>
+                  ) : (
+                    <View className="w-28 h-28 rounded-2xl bg-gray-100 dark:bg-gray-800 items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600">
+                      <Ionicons
+                        name="camera-outline"
+                        size={32}
+                        color={isDark ? "#6B7280" : "#9CA3AF"}
+                      />
+                      <Text className="text-gray-400 dark:text-gray-500 text-xs font-semibold mt-2 text-center">
+                        Add Photo
+                      </Text>
+                    </View>
+                  )}
+                </Pressable>
+
+                <View className="flex-row gap-3 mt-3">
+                  <Pressable
+                    onPress={handleTakePhoto}
+                    className="flex-row items-center gap-1.5 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl"
+                  >
+                    <Ionicons
+                      name="camera-outline"
+                      size={16}
+                      color={isDark ? "#9CA3AF" : "#6B7280"}
+                    />
+                    <Text className="text-gray-600 dark:text-gray-400 text-xs font-semibold">
+                      Camera
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handlePickFromGallery}
+                    className="flex-row items-center gap-1.5 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl"
+                  >
+                    <Ionicons
+                      name="images-outline"
+                      size={16}
+                      color={isDark ? "#9CA3AF" : "#6B7280"}
+                    />
+                    <Text className="text-gray-600 dark:text-gray-400 text-xs font-semibold">
+                      Gallery
+                    </Text>
+                  </Pressable>
+                  {image && (
+                    <Pressable
+                      onPress={() => setImage("")}
+                      className="flex-row items-center gap-1.5 px-4 py-2 bg-red-50 dark:bg-red-950/40 rounded-xl"
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color="#EF4444"
+                      />
+                      <Text className="text-red-500 text-xs font-semibold">
+                        Remove
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+
               {/* Product Name */}
               <View className="mb-4">
                 <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm mb-2">
@@ -285,51 +405,6 @@ export function AddProductModal({
                 </View>
               </View>
 
-              {/* Stock Row */}
-              <View className="flex-row gap-3 mb-4">
-                <View className="flex-1">
-                  <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm mb-2">
-                    Quantity *
-                  </Text>
-                  <TextInput
-                    value={quantityOnHand}
-                    onChangeText={setQuantityOnHand}
-                    placeholder="0"
-                    keyboardType="number-pad"
-                    placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
-                    className="bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 text-gray-900 dark:text-white"
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm mb-2">
-                    Low Stock Alert *
-                  </Text>
-                  <TextInput
-                    value={lowStockThreshold}
-                    onChangeText={setLowStockThreshold}
-                    placeholder="0"
-                    keyboardType="number-pad"
-                    placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
-                    className="bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 text-gray-900 dark:text-white"
-                  />
-                </View>
-              </View>
-
-              {/* Image URL */}
-              <View className="mb-4">
-                <Text className="text-gray-700 dark:text-gray-300 font-bold text-sm mb-2">
-                  Image URL
-                </Text>
-                <TextInput
-                  value={image}
-                  onChangeText={setImage}
-                  placeholder="https://..."
-                  placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
-                  className="bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 text-gray-900 dark:text-white"
-                  autoCapitalize="none"
-                />
-              </View>
-
               {/* Variants Section */}
               <View className="mb-4">
                 <Pressable
@@ -374,36 +449,16 @@ export function AddProductModal({
                           className="bg-white dark:bg-gray-900 rounded-lg px-3 py-2 text-gray-900 dark:text-white mb-2 text-sm"
                         />
 
-                        <View className="flex-row gap-2">
-                          <View className="flex-1">
-                            <TextInput
-                              value={variant.additionalPrice}
-                              onChangeText={(v) =>
-                                updateVariant(index, "additionalPrice", v)
-                              }
-                              placeholder="Price +/-"
-                              keyboardType="decimal-pad"
-                              placeholderTextColor={
-                                isDark ? "#6B7280" : "#9CA3AF"
-                              }
-                              className="bg-white dark:bg-gray-900 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
-                            />
-                          </View>
-                          <View className="flex-1">
-                            <TextInput
-                              value={variant.quantityOnHand}
-                              onChangeText={(v) =>
-                                updateVariant(index, "quantityOnHand", v)
-                              }
-                              placeholder="Quantity"
-                              keyboardType="number-pad"
-                              placeholderTextColor={
-                                isDark ? "#6B7280" : "#9CA3AF"
-                              }
-                              className="bg-white dark:bg-gray-900 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
-                            />
-                          </View>
-                        </View>
+                        <TextInput
+                          value={variant.additionalPrice}
+                          onChangeText={(v) =>
+                            updateVariant(index, "additionalPrice", v)
+                          }
+                          placeholder="Additional price (e.g., +20)"
+                          keyboardType="decimal-pad"
+                          placeholderTextColor={isDark ? "#6B7280" : "#9CA3AF"}
+                          className="bg-white dark:bg-gray-900 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm"
+                        />
                       </View>
                     ))}
 
